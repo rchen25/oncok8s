@@ -33,6 +33,6 @@ While it is possible to run distributed applications with other infrastructure s
 
 #### Database
 
-Db - MongoDB: used docker image https://hub.docker.com/_/mongo
-Web - Mongo-express: used docker image https://hub.docker.com/_/mongo-express
+* Db - MongoDB: used docker image https://hub.docker.com/_/mongo
+* Web - Mongo-express: used docker image https://hub.docker.com/_/mongo-express
 
