@@ -16,3 +16,23 @@ While it is possible to run distributed applications with other infrastructure s
 * Cluster setup: Prototype / cluster for testing purpose: Minikube (1-node K8s cluster locally)
 * Machine tested on: Macbook Air (mac OSX - apple M1 chip)
 
+### Architecture
+
+#### Pods: 
+- mongo
+- mongo-express 
+
+#### Deployments: 
+- mongo
+- mongo-express 
+
+#### Services:
+- mongo
+- mongo-express 
+
+
+#### Database
+
+Db - MongoDB: used docker image https://hub.docker.com/_/mongo
+Web - Mongo-express: used docker image https://hub.docker.com/_/mongo-express
+
