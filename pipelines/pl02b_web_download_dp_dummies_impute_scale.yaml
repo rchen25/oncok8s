@@ -1,0 +1,326 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pl02b-web-download-dp-dummies-impute-scale-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11, pipelines.kubeflow.org/pipeline_compilation_time: '2022-03-17T14:07:50.029825',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
+      data processing", "inputs": [{"name": "url"}], "name": "Pl02b web download dp
+      dummies impute scale"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11}
+spec:
+  entrypoint: pl02b-web-download-dp-dummies-impute-scale
+  templates:
+  - name: download-data-kfp-sdk-v2
+    container:
+      args: []
+      command:
+      - sh
+      - -exc
+      - |
+        url="$0"
+        output_path="$1"
+        curl_options="$2"
+        mkdir -p "$(dirname "$output_path")"
+        curl --get "$url" --output "$output_path" $curl_options
+      - https://www.openml.org/data/get_csv/3594/dataset_113_primary-tumor.arff
+      - /tmp/outputs/Data/data
+      - --location
+      image: byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342
+    outputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/outputs/Data/data}
+    metadata:
+      annotations: {author: Alexey Volkov <alexey.volkov@ark-kun.com>, canonical_location: 'https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml',
+        pipelines.kubeflow.org/component_spec: '{"description": "Downloads data from
+          the specified URL. (Updated for KFP SDK v2.)", "implementation": {"container":
+          {"command": ["sh", "-exc", "url=\"$0\"\noutput_path=\"$1\"\ncurl_options=\"$2\"\nmkdir
+          -p \"$(dirname \"$output_path\")\"\ncurl --get \"$url\" --output \"$output_path\"
+          $curl_options\n", {"inputValue": "Url"}, {"outputPath": "Data"}, {"inputValue":
+          "curl options"}], "image": "byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342"}},
+          "inputs": [{"name": "Url", "type": "String"}, {"default": "--location",
+          "description": "Additional options given to the curl bprogram. See https://curl.haxx.se/docs/manpage.html",
+          "name": "curl options", "type": "String"}], "metadata": {"annotations":
+          {"author": "Alexey Volkov <alexey.volkov@ark-kun.com>", "canonical_location":
+          "https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml"}},
+          "name": "Download data (KFP SDK v2)", "outputs": [{"name": "Data"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "3eafccb9f368ff7282d1670d655c2e1b3ee8fdd241dd6b3d0e1d9de4b6da7c9b", "url":
+          "./component-sdk-v2.yaml"}', pipelines.kubeflow.org/arguments.parameters: '{"Url":
+          "https://www.openml.org/data/get_csv/3594/dataset_113_primary-tumor.arff",
+          "curl options": "--location"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: get-dummies
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def get_dummies(file_path,
+                        output_csv):
+            """Distribute categorical features into separate features.
+                Input: CSV with categorical (and numeric) features
+                Output: CSV with categorical features separated into dummies.
+
+            Args:
+                file_path: A string containing path to input data.
+                output_csv: A string containing path to processed data.
+            """
+            import glob
+            import pandas as pd
+
+            df = pd.read_csv(filepath_or_buffer=file_path)
+            df_dummies = pd.get_dummies(df)
+            df_dummies.to_csv(output_csv, index = False, header = True)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Get dummies', description='Distribute categorical features into separate features.')
+        _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = get_dummies(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: get-dummies-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Distribute
+          categorical features into separate features.", "implementation": {"container":
+          {"args": ["--file", {"inputPath": "file"}, "--output-csv", {"outputPath":
+          "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                output_csv):\n    \"\"\"Distribute
+          categorical features into separate features.\n        Input: CSV with categorical
+          (and numeric) features\n        Output: CSV with categorical features separated
+          into dummies.\n\n    Args:\n        file_path: A string containing path
+          to input data.\n        output_csv: A string containing path to processed
+          data.\n    \"\"\"\n    import glob\n    import pandas as pd\n\n    df =
+          pd.read_csv(filepath_or_buffer=file_path)\n    df_dummies = pd.get_dummies(df)\n    df_dummies.to_csv(output_csv,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
+          dummies'', description=''Distribute categorical features into separate features.'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = get_dummies(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          "A string containing path to input data.", "name": "file", "type": "CSV"}],
+          "name": "Get dummies", "outputs": [{"description": "A string containing
+          path to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: impute-unknown
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def impute_unknown(file_path,
+                        output_csv):
+            """Impute unknown values (nan).
+                Input: CSV.
+                Output: CSV.
+
+            Args:
+                file_path: A string containing path to input data.
+                output_csv: A string containing path to processed data.
+            """
+            import pandas as pd
+
+            # Read in CSV
+            df = pd.read_csv(filepath_or_buffer=file_path)
+
+            # Output to CSV
+            df.to_csv(output_csv, index = False, header = True)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Impute unknown', description='Impute unknown values (nan).')
+        _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = impute_unknown(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: get-dummies-output_csv, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: impute-unknown-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Impute
+          unknown values (nan).", "implementation": {"container": {"args": ["--file",
+          {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef impute_unknown(file_path,\n                output_csv):\n    \"\"\"Impute
+          unknown values (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:
+          A string containing path to input data.\n        output_csv: A string containing
+          path to processed data.\n    \"\"\"\n    import pandas as pd\n\n    # Read
+          in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Output
+          to CSV\n    df.to_csv(output_csv, index = False, header = True)\n\nimport
+          argparse\n_parser = argparse.ArgumentParser(prog=''Impute unknown'', description=''Impute
+          unknown values (nan).'')\n_parser.add_argument(\"--file\", dest=\"file_path\",
+          type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = impute_unknown(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"description": "A string containing path to input data.", "name": "file",
+          "type": "CSV"}], "name": "Impute unknown", "outputs": [{"description": "A
+          string containing path to processed data.", "name": "output_csv", "type":
+          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: pl02b-web-download-dp-dummies-impute-scale
+    dag:
+      tasks:
+      - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
+      - name: get-dummies
+        template: get-dummies
+        dependencies: [download-data-kfp-sdk-v2]
+        arguments:
+          artifacts:
+          - {name: download-data-kfp-sdk-v2-Data, from: '{{tasks.download-data-kfp-sdk-v2.outputs.artifacts.download-data-kfp-sdk-v2-Data}}'}
+      - name: impute-unknown
+        template: impute-unknown
+        dependencies: [get-dummies]
+        arguments:
+          artifacts:
+          - {name: get-dummies-output_csv, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv}}'}
+      - name: scale-df
+        template: scale-df
+        dependencies: [impute-unknown]
+        arguments:
+          artifacts:
+          - {name: impute-unknown-output_csv, from: '{{tasks.impute-unknown.outputs.artifacts.impute-unknown-output_csv}}'}
+  - name: scale-df
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def scale_df(file_path,
+                        output_csv):
+            """Impute unknown values (nan).
+                Input: CSV.
+                Output: CSV.
+
+            Args:
+                file_path: A string containing path to input data.
+                output_csv: A string containing path to processed data.
+            """
+            import pandas as pd
+
+            # Read in CSV
+            df = pd.read_csv(filepath_or_buffer=file_path)
+
+            # Output to CSV
+            df.to_csv(output_csv, index = False, header = True)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Scale df', description='Impute unknown values (nan).')
+        _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = scale_df(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: impute-unknown-output_csv, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: scale-df-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Impute
+          unknown values (nan).", "implementation": {"container": {"args": ["--file",
+          {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef scale_df(file_path,\n                output_csv):\n    \"\"\"Impute
+          unknown values (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:
+          A string containing path to input data.\n        output_csv: A string containing
+          path to processed data.\n    \"\"\"\n    import pandas as pd\n\n    # Read
+          in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Output
+          to CSV\n    df.to_csv(output_csv, index = False, header = True)\n\nimport
+          argparse\n_parser = argparse.ArgumentParser(prog=''Scale df'', description=''Impute
+          unknown values (nan).'')\n_parser.add_argument(\"--file\", dest=\"file_path\",
+          type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = scale_df(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          "A string containing path to input data.", "name": "file", "type": "CSV"}],
+          "name": "Scale df", "outputs": [{"description": "A string containing path
+          to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  arguments:
+    parameters:
+    - {name: url}
+  serviceAccountName: pipeline-runner
