@@ -4,7 +4,7 @@ inputs:
 - name: file
   type: Tarball
   description: |-
-    A string containing path to the YAML file.
+    A string containing path to the tarball.
     e.g., 'https://storage.googleapis.com/ml-pipeline-playground/iris-csv-files.tar.gz'
 outputs:
 - {name: output_csv, type: CSV}
@@ -27,7 +27,7 @@ implementation:
       \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
       \ndef merge_csv(file_path,\n              output_csv):\n    \"\"\"Merge multiple\
       \ CSV files inside tarball.\n\n    Args:\n        file_path: A string containing\
-      \ path to the YAML file.\n                    e.g., 'https://storage.googleapis.com/ml-pipeline-playground/iris-csv-files.tar.gz'\n\
+      \ path to the tarball.\n                    e.g., 'https://storage.googleapis.com/ml-pipeline-playground/iris-csv-files.tar.gz'\n\
       \    \"\"\"\n    import glob\n    import pandas as pd\n    import tarfile\n\n\
       \    tarfile.open(name=file_path, mode=\"r|gz\").extractall('data')\n    df\
       \ = pd.concat(\n        [pd.read_csv(csv_file, header=None) \n            for\
