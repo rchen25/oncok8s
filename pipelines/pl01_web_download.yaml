@@ -1,0 +1,60 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pl01-web-download-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11, pipelines.kubeflow.org/pipeline_compilation_time: '2022-03-17T12:42:13.936595',
+    pipelines.kubeflow.org/pipeline_spec: '{"inputs": [{"name": "url"}], "name": "Pl01
+      web download"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11}
+spec:
+  entrypoint: pl01-web-download
+  templates:
+  - name: download-data-kfp-sdk-v2
+    container:
+      args: []
+      command:
+      - sh
+      - -exc
+      - |
+        url="$0"
+        output_path="$1"
+        curl_options="$2"
+        mkdir -p "$(dirname "$output_path")"
+        curl --get "$url" --output "$output_path" $curl_options
+      - https://www.openml.org/data/get_csv/3594/dataset_113_primary-tumor.arff
+      - /tmp/outputs/Data/data
+      - --location
+      image: byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342
+    outputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/outputs/Data/data}
+    metadata:
+      annotations: {author: Alexey Volkov <alexey.volkov@ark-kun.com>, canonical_location: 'https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml',
+        pipelines.kubeflow.org/component_spec: '{"description": "Downloads data from
+          the specified URL. (Updated for KFP SDK v2.)", "implementation": {"container":
+          {"command": ["sh", "-exc", "url=\"$0\"\noutput_path=\"$1\"\ncurl_options=\"$2\"\nmkdir
+          -p \"$(dirname \"$output_path\")\"\ncurl --get \"$url\" --output \"$output_path\"
+          $curl_options\n", {"inputValue": "Url"}, {"outputPath": "Data"}, {"inputValue":
+          "curl options"}], "image": "byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342"}},
+          "inputs": [{"name": "Url", "type": "String"}, {"default": "--location",
+          "description": "Additional options given to the curl bprogram. See https://curl.haxx.se/docs/manpage.html",
+          "name": "curl options", "type": "String"}], "metadata": {"annotations":
+          {"author": "Alexey Volkov <alexey.volkov@ark-kun.com>", "canonical_location":
+          "https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml"}},
+          "name": "Download data (KFP SDK v2)", "outputs": [{"name": "Data"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "3eafccb9f368ff7282d1670d655c2e1b3ee8fdd241dd6b3d0e1d9de4b6da7c9b", "url":
+          "./component-sdk-v2.yaml"}', pipelines.kubeflow.org/arguments.parameters: '{"Url":
+          "https://www.openml.org/data/get_csv/3594/dataset_113_primary-tumor.arff",
+          "curl options": "--location"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: pl01-web-download
+    dag:
+      tasks:
+      - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
+  arguments:
+    parameters:
+    - {name: url}
+  serviceAccountName: pipeline-runner
