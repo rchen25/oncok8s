@@ -40,7 +40,7 @@ implementation:
           import pandas as pd
 
           df = pd.read_csv(filepath_or_buffer=file_path)
-          df_dummies = df.get_dummies()
+          df_dummies = pd.get_dummies(df)
           df_dummies.to_csv(output_csv, index = False, header = True)
 
       import argparse
