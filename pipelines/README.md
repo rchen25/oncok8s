@@ -41,6 +41,6 @@ Examples: ANOVA, Chi-Square
 
 ### 4 Classification
 
-Examples: XGBoost, Logistic Regression, ANN, CNN
+Examples: XGBoost, Logistic Regression, ANN, CNN, Decision Tree
 
 
