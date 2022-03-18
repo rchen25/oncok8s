@@ -1,7 +1,8 @@
 name: Create model inputs
 description: Impute unknown values (nan).
 inputs:
-- {name: file, type: CSV, description: 'A string containing path to input data.        '}
+- {name: file_path_features, type: CSV}
+- {name: file_path_target, type: CSV}
 outputs:
 - {name: output_json, type: JSON}
 implementation:
@@ -11,8 +12,9 @@ implementation:
     - sh
     - -c
     - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-      'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-      --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+      -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+      --user) && "$0" "$@"
     - sh
     - -ec
     - |
@@ -21,38 +23,38 @@ implementation:
       python3 -u "$program_path" "$@"
     - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
       \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-      \ndef create_model_inputs(file_path,\n                            output_json):\n\
-      \    \"\"\"Impute unknown values (nan).\n        Input: CSV.\n        Output:\
-      \ CSV.\n\n    Args:\n        file_path: A string containing path to input data.\
-      \        \n    \"\"\"\n\n    import json \n    from json import JSONEncoder\n\
-      \    import numpy as np\n    import pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
+      \ndef create_model_inputs(file_path_features,\n                        file_path_target,\n\
+      \                            output_json):\n    \"\"\"Impute unknown values\
+      \ (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:\
+      \ A string containing path to input data.        \n    \"\"\"\n\n    import\
+      \ json \n    from json import JSONEncoder\n    import numpy as np\n    import\
+      \ pandas as pd\n    from sklearn import preprocessing\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
       \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
       \                return obj.tolist()\n            return JSONEncoder.default(self,\
-      \ obj)\n\n    # Read in CSV\n    features_to_include = [\"age_'30-59'\", \"\
-      age_'<30'\", \"age_'>=60'\", 'sex_?', 'sex_female',\n       'sex_male', 'histologic-type_?',\
-      \ 'histologic-type_adeno',\n       'histologic-type_anaplastic', 'histologic-type_epidermoid',\n\
-      \       'degree-of-diffe_?', 'degree-of-diffe_fairly', 'degree-of-diffe_poorly',\n\
-      \       'degree-of-diffe_well', 'bone_no', 'bone_yes', 'bone-marrow_no',\n \
-      \      'bone-marrow_yes', 'lung_no', 'lung_yes', 'pleura_no', 'pleura_yes',\n\
-      \       'peritoneum_no', 'peritoneum_yes', 'liver_no', 'liver_yes', 'brain_no',\n\
-      \       'brain_yes', 'skin_?', 'skin_no', 'skin_yes', 'neck_no', 'neck_yes',\n\
-      \       'supraclavicular_no', 'supraclavicular_yes', 'axillar_?', 'axillar_no',\n\
-      \       'axillar_yes', 'mediastinum_no', 'mediastinum_yes', 'abdominal_no',\n\
-      \       'abdominal_yes']\n    column_name_labels = 'class_breast'\n\n    df\
-      \ = pd.read_csv(filepath_or_buffer=file_path)\n    df_feature_matrix = df[features_to_include]\n\
-      \    df_X = df_feature_matrix\n    df_y = df[column_name_labels]\n\n    ## output:\
-      \ JSON\n    d_output = {\"X\": np.array(df_X),\n                \"y\": np.array(df_y),\n\
-      \                \"feature_names\": np.array(df_feature_matrix.columns)}\n\n\
-      \    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n  \
-      \  ### write json file\n    with open(output_json, 'w') as outfile:\n      \
-      \  outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Create\
+      \ obj)\n\n    # Read in feature df and make X\n\n    df_feature_matrix = pd.read_csv(filepath_or_buffer=file_path_features)\n\
+      \    df_X = df_feature_matrix\n    feature_names = np.array(df_feature_matrix.columns)\n\
+      \n    # Read in target df and make y\n    df_target = pd.read_csv(filepath_or_buffer=file_path_target)\
+      \ # one-column df\n    df_y = df_target # one-column df\n    y = np.array(df_y)\n\
+      \n    ## If needed, binarize one-vs-all\n    ## https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelBinarizer.html\n\
+      \    lb = preprocessing.LabelBinarizer()\n    lb.fit(y)\n    target_class_names\
+      \ = lb.classes_\n    y_binarized = lb.transform(y) # can be multi-dimensional\
+      \ array if there are more than 2 classes\n\n    ## output: JSON\n    d_output\
+      \ = {\"X\": np.array(df_X),\n                \"y\": y_binarized,\n         \
+      \       \"X_feature_names\": feature_names,\n                \"y_target_class_names\"\
+      : target_class_names}\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\
+      \n    ### write json file\n    with open(output_json, 'w') as outfile:\n   \
+      \     outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Create\
       \ model inputs', description='Impute unknown values (nan).')\n_parser.add_argument(\"\
-      --file\", dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n\
-      _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+      --file-path-features\", dest=\"file_path_features\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-target\", dest=\"\
+      file_path_target\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
       \n_outputs = create_model_inputs(**_parsed_args)\n"
     args:
-    - --file
-    - {inputPath: file}
+    - --file-path-features
+    - {inputPath: file_path_features}
+    - --file-path-target
+    - {inputPath: file_path_target}
     - --output-json
     - {outputPath: output_json}

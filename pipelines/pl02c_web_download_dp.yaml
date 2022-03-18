@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl02c-web-download-dp-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11, pipelines.kubeflow.org/pipeline_compilation_time: '2022-03-17T15:30:10.685646',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11, pipelines.kubeflow.org/pipeline_compilation_time: '2022-03-17T23:43:30.359053',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"name": "url"}], "name": "Pl02c web download dp"}'}
   labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11}
@@ -11,13 +11,15 @@ spec:
   templates:
   - name: create-model-inputs
     container:
-      args: [--file, /tmp/inputs/file/data, --output-json, /tmp/outputs/output_json/data]
+      args: [--file-path-features, /tmp/inputs/file_path_features/data, --file-path-target,
+        /tmp/inputs/file_path_target/data, --output-json, /tmp/outputs/output_json/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -26,40 +28,40 @@ spec:
         python3 -u "$program_path" "$@"
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-        \ndef create_model_inputs(file_path,\n                            output_json):\n\
-        \    \"\"\"Impute unknown values (nan).\n        Input: CSV.\n        Output:\
-        \ CSV.\n\n    Args:\n        file_path: A string containing path to input\
-        \ data.        \n    \"\"\"\n\n    import json \n    from json import JSONEncoder\n\
-        \    import numpy as np\n    import pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
-        \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
-        \                return obj.tolist()\n            return JSONEncoder.default(self,\
-        \ obj)\n\n    # Read in CSV\n    features_to_include = [\"age_'30-59'\", \"\
-        age_'<30'\", \"age_'>=60'\", 'sex_?', 'sex_female',\n       'sex_male', 'histologic-type_?',\
-        \ 'histologic-type_adeno',\n       'histologic-type_anaplastic', 'histologic-type_epidermoid',\n\
-        \       'degree-of-diffe_?', 'degree-of-diffe_fairly', 'degree-of-diffe_poorly',\n\
-        \       'degree-of-diffe_well', 'bone_no', 'bone_yes', 'bone-marrow_no',\n\
-        \       'bone-marrow_yes', 'lung_no', 'lung_yes', 'pleura_no', 'pleura_yes',\n\
-        \       'peritoneum_no', 'peritoneum_yes', 'liver_no', 'liver_yes', 'brain_no',\n\
-        \       'brain_yes', 'skin_?', 'skin_no', 'skin_yes', 'neck_no', 'neck_yes',\n\
-        \       'supraclavicular_no', 'supraclavicular_yes', 'axillar_?', 'axillar_no',\n\
-        \       'axillar_yes', 'mediastinum_no', 'mediastinum_yes', 'abdominal_no',\n\
-        \       'abdominal_yes']\n    column_name_labels = 'class_breast'\n\n    df\
-        \ = pd.read_csv(filepath_or_buffer=file_path)\n    df_feature_matrix = df[features_to_include]\n\
-        \    df_X = df_feature_matrix\n    df_y = df[column_name_labels]\n\n    ##\
-        \ output: JSON\n    d_output = {\"X\": np.array(df_X),\n                \"\
-        y\": np.array(df_y),\n                \"feature_names\": np.array(df_feature_matrix.columns)}\n\
-        \n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n\
-        \    ### write json file\n    with open(output_json, 'w') as outfile:\n  \
-        \      outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Create\
+        \ndef create_model_inputs(file_path_features,\n                        file_path_target,\n\
+        \                            output_json):\n    \"\"\"Impute unknown values\
+        \ (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n       \
+        \ file_path: A string containing path to input data.        \n    \"\"\"\n\
+        \n    import json \n    from json import JSONEncoder\n    import numpy as\
+        \ np\n    import pandas as pd\n    from sklearn import preprocessing\n\n \
+        \   class NumpyArrayEncoder(JSONEncoder):\n        def default(self, obj):\n\
+        \            if isinstance(obj, np.ndarray):\n                return obj.tolist()\n\
+        \            return JSONEncoder.default(self, obj)\n\n    # Read in feature\
+        \ df and make X\n\n    df_feature_matrix = pd.read_csv(filepath_or_buffer=file_path_features)\n\
+        \    df_X = df_feature_matrix\n    feature_names = np.array(df_feature_matrix.columns)\n\
+        \n    # Read in target df and make y\n    df_target = pd.read_csv(filepath_or_buffer=file_path_target)\
+        \ # one-column df\n    df_y = df_target # one-column df\n    y = np.array(df_y)\n\
+        \n    ## If needed, binarize one-vs-all\n    ## https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelBinarizer.html\n\
+        \    lb = preprocessing.LabelBinarizer()\n    lb.fit(y)\n    target_class_names\
+        \ = lb.classes_\n    y_binarized = lb.transform(y) # can be multi-dimensional\
+        \ array if there are more than 2 classes\n\n    ## output: JSON\n    d_output\
+        \ = {\"X\": np.array(df_X),\n                \"y\": y_binarized,\n       \
+        \         \"X_feature_names\": feature_names,\n                \"y_target_class_names\"\
+        : target_class_names}\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\
+        \n    ### write json file\n    with open(output_json, 'w') as outfile:\n \
+        \       outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Create\
         \ model inputs', description='Impute unknown values (nan).')\n_parser.add_argument(\"\
-        --file\", dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        --file-path-features\", dest=\"file_path_features\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-target\"\
+        , dest=\"file_path_target\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = create_model_inputs(**_parsed_args)\n"
       image: python:3.7
     inputs:
       artifacts:
-      - {name: scale-df-output_csv, path: /tmp/inputs/file/data}
+      - {name: scale-df-output_csv, path: /tmp/inputs/file_path_features/data}
+      - {name: get-dummies-output_csv_target, path: /tmp/inputs/file_path_target/data}
     outputs:
       artifacts:
       - {name: create-model-inputs-output_json, path: /tmp/outputs/output_json/data}
@@ -69,46 +71,44 @@ spec:
         pipelines.kubeflow.org/pipeline-sdk-type: kfp
         pipelines.kubeflow.org/enable_caching: "true"
       annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Impute
-          unknown values (nan).", "implementation": {"container": {"args": ["--file",
-          {"inputPath": "file"}, "--output-json", {"outputPath": "output_json"}],
-          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          unknown values (nan).", "implementation": {"container": {"args": ["--file-path-features",
+          {"inputPath": "file_path_features"}, "--file-path-target", {"inputPath":
+          "file_path_target"}, "--output-json", {"outputPath": "output_json"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path,\n                            output_json):\n    \"\"\"Impute
+          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_target,\n                            output_json):\n    \"\"\"Impute
           unknown values (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:
           A string containing path to input data.        \n    \"\"\"\n\n    import
           json \n    from json import JSONEncoder\n    import numpy as np\n    import
-          pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n        def default(self,
-          obj):\n            if isinstance(obj, np.ndarray):\n                return
+          pandas as pd\n    from sklearn import preprocessing\n\n    class NumpyArrayEncoder(JSONEncoder):\n        def
+          default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
           obj.tolist()\n            return JSONEncoder.default(self, obj)\n\n    #
-          Read in CSV\n    features_to_include = [\"age_''30-59''\", \"age_''<30''\",
-          \"age_''>=60''\", ''sex_?'', ''sex_female'',\n       ''sex_male'', ''histologic-type_?'',
-          ''histologic-type_adeno'',\n       ''histologic-type_anaplastic'', ''histologic-type_epidermoid'',\n       ''degree-of-diffe_?'',
-          ''degree-of-diffe_fairly'', ''degree-of-diffe_poorly'',\n       ''degree-of-diffe_well'',
-          ''bone_no'', ''bone_yes'', ''bone-marrow_no'',\n       ''bone-marrow_yes'',
-          ''lung_no'', ''lung_yes'', ''pleura_no'', ''pleura_yes'',\n       ''peritoneum_no'',
-          ''peritoneum_yes'', ''liver_no'', ''liver_yes'', ''brain_no'',\n       ''brain_yes'',
-          ''skin_?'', ''skin_no'', ''skin_yes'', ''neck_no'', ''neck_yes'',\n       ''supraclavicular_no'',
-          ''supraclavicular_yes'', ''axillar_?'', ''axillar_no'',\n       ''axillar_yes'',
-          ''mediastinum_no'', ''mediastinum_yes'', ''abdominal_no'',\n       ''abdominal_yes'']\n    column_name_labels
-          = ''class_breast''\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n    df_feature_matrix
-          = df[features_to_include]\n    df_X = df_feature_matrix\n    df_y = df[column_name_labels]\n\n    ##
-          output: JSON\n    d_output = {\"X\": np.array(df_X),\n                \"y\":
-          np.array(df_y),\n                \"feature_names\": np.array(df_feature_matrix.columns)}\n\n    json_string_output
+          Read in feature df and make X\n\n    df_feature_matrix = pd.read_csv(filepath_or_buffer=file_path_features)\n    df_X
+          = df_feature_matrix\n    feature_names = np.array(df_feature_matrix.columns)\n\n    #
+          Read in target df and make y\n    df_target = pd.read_csv(filepath_or_buffer=file_path_target)
+          # one-column df\n    df_y = df_target # one-column df\n    y = np.array(df_y)\n\n    ##
+          If needed, binarize one-vs-all\n    ## https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelBinarizer.html\n    lb
+          = preprocessing.LabelBinarizer()\n    lb.fit(y)\n    target_class_names
+          = lb.classes_\n    y_binarized = lb.transform(y) # can be multi-dimensional
+          array if there are more than 2 classes\n\n    ## output: JSON\n    d_output
+          = {\"X\": np.array(df_X),\n                \"y\": y_binarized,\n                \"X_feature_names\":
+          feature_names,\n                \"y_target_class_names\": target_class_names}\n\n    json_string_output
           = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ### write json file\n    with
           open(output_json, ''w'') as outfile:\n        outfile.write(json_string_output)\n\nimport
           argparse\n_parser = argparse.ArgumentParser(prog=''Create model inputs'',
-          description=''Impute unknown values (nan).'')\n_parser.add_argument(\"--file\",
-          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
+          description=''Impute unknown values (nan).'')\n_parser.add_argument(\"--file-path-features\",
+          dest=\"file_path_features\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-target\",
+          dest=\"file_path_target\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
           dest=\"output_json\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = create_model_inputs(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
-          [{"description": "A string containing path to input data.        ", "name":
-          "file", "type": "CSV"}], "name": "Create model inputs", "outputs": [{"name":
-          "output_json", "type": "JSON"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          [{"name": "file_path_features", "type": "CSV"}, {"name": "file_path_target",
+          "type": "CSV"}], "name": "Create model inputs", "outputs": [{"name": "output_json",
+          "type": "JSON"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: download-data-kfp-sdk-v2
     container:
       args: []
@@ -152,7 +152,8 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
   - name: get-dummies
     container:
-      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      args: [--file, /tmp/inputs/file/data, --output-csv-features, /tmp/outputs/output_csv_features/data,
+        --output-csv-target, /tmp/outputs/output_csv_target/data]
       command:
       - sh
       - -c
@@ -172,7 +173,8 @@ spec:
             return file_path
 
         def get_dummies(file_path,
-                        output_csv):
+                        output_csv_features,
+                        output_csv_target):
             """Distribute categorical features into separate features.
                 Input: CSV with categorical (and numeric) features
                 Output: CSV with categorical features separated into dummies.
@@ -185,13 +187,24 @@ spec:
             import pandas as pd
 
             df = pd.read_csv(filepath_or_buffer=file_path)
-            df_dummies = pd.get_dummies(df)
-            df_dummies.to_csv(output_csv, index = False, header = True)
+            l_col_names = list(df.columns)
+
+            # assume last col is target
+            df_target = df[l_col_names[-1]]
+
+            # create dummies for every col except last
+            df_features = df[l_col_names[:len(l_col_names)-1]]
+            df_features_dummies = pd.get_dummies(df_features)
+
+            # write outputs
+            df_features_dummies.to_csv(output_csv_features, index = False, header = True)
+            df_target.to_csv(output_csv_target, index = False, header = True)
 
         import argparse
         _parser = argparse.ArgumentParser(prog='Get dummies', description='Distribute categorical features into separate features.')
         _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
-        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv-features", dest="output_csv_features", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv-target", dest="output_csv_target", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = get_dummies(**_parsed_args)
@@ -201,7 +214,8 @@ spec:
       - {name: download-data-kfp-sdk-v2-Data, path: /tmp/inputs/file/data}
     outputs:
       artifacts:
-      - {name: get-dummies-output_csv, path: /tmp/outputs/output_csv/data}
+      - {name: get-dummies-output_csv_features, path: /tmp/outputs/output_csv_features/data}
+      - {name: get-dummies-output_csv_target, path: /tmp/outputs/output_csv_target/data}
     metadata:
       labels:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
@@ -209,29 +223,36 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
       annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Distribute
           categorical features into separate features.", "implementation": {"container":
-          {"args": ["--file", {"inputPath": "file"}, "--output-csv", {"outputPath":
-          "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          {"args": ["--file", {"inputPath": "file"}, "--output-csv-features", {"outputPath":
+          "output_csv_features"}, "--output-csv-target", {"outputPath": "output_csv_target"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                output_csv):\n    \"\"\"Distribute
+          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                output_csv_features,\n                output_csv_target):\n    \"\"\"Distribute
           categorical features into separate features.\n        Input: CSV with categorical
           (and numeric) features\n        Output: CSV with categorical features separated
           into dummies.\n\n    Args:\n        file_path: A string containing path
           to input data.\n        output_csv: A string containing path to processed
           data.\n    \"\"\"\n    import glob\n    import pandas as pd\n\n    df =
-          pd.read_csv(filepath_or_buffer=file_path)\n    df_dummies = pd.get_dummies(df)\n    df_dummies.to_csv(output_csv,
-          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
+          pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names = list(df.columns)\n\n    #
+          assume last col is target\n    df_target = df[l_col_names[-1]]\n\n    #
+          create dummies for every col except last\n    df_features = df[l_col_names[:len(l_col_names)-1]]\n    df_features_dummies
+          = pd.get_dummies(df_features)\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
+          index = False, header = True)\n    df_target.to_csv(output_csv_target, index
+          = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
           dummies'', description=''Distribute categorical features into separate features.'')\n_parser.add_argument(\"--file\",
-          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
-          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\",
+          dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\",
+          dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = get_dummies(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
           "A string containing path to input data.", "name": "file", "type": "CSV"}],
-          "name": "Get dummies", "outputs": [{"description": "A string containing
-          path to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "name": "Get dummies", "outputs": [{"name": "output_csv_features", "type":
+          "CSV"}, {"name": "output_csv_target", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: impute-unknown
     container:
       args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
@@ -281,7 +302,7 @@ spec:
       image: python:3.7
     inputs:
       artifacts:
-      - {name: get-dummies-output_csv, path: /tmp/inputs/file/data}
+      - {name: get-dummies-output_csv_features, path: /tmp/inputs/file/data}
     outputs:
       artifacts:
       - {name: impute-unknown-output_csv, path: /tmp/outputs/output_csv/data}
@@ -320,9 +341,10 @@ spec:
       tasks:
       - name: create-model-inputs
         template: create-model-inputs
-        dependencies: [scale-df]
+        dependencies: [get-dummies, scale-df]
         arguments:
           artifacts:
+          - {name: get-dummies-output_csv_target, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_target}}'}
           - {name: scale-df-output_csv, from: '{{tasks.scale-df.outputs.artifacts.scale-df-output_csv}}'}
       - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
       - name: get-dummies
@@ -336,7 +358,7 @@ spec:
         dependencies: [get-dummies]
         arguments:
           artifacts:
-          - {name: get-dummies-output_csv, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv}}'}
+          - {name: get-dummies-output_csv_features, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_features}}'}
       - name: scale-df
         template: scale-df
         dependencies: [impute-unknown]
