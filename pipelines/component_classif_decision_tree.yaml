@@ -11,8 +11,9 @@ implementation:
     - sh
     - -c
     - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-      'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-      --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+      -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+      --user) && "$0" "$@"
     - sh
     - -ec
     - |
@@ -25,20 +26,28 @@ implementation:
       \    \"\"\"Impute unknown values (nan).\n        Input: CSV.\n        Output:\
       \ CSV.\n\n    Args:\n        file_path: A string containing path to input data.\
       \        \n    \"\"\"\n\n    import json \n    from json import JSONEncoder\n\
-      \    import numpy as np\n    import pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
-      \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
-      \                return obj.tolist()\n            return JSONEncoder.default(self,\
-      \ obj)\n\n    # read in JSON\n    with open(file_path, \"r\") as read_file:\n\
-      \        json_input_data = json.load(read_file)\n\n    X = np.array(json_input_data['X'])\n\
-      \    y = np.array(json_input_data['y'])\n    feature_names = json_input_data['feature_names']\n\
-      \n    # output: JSON\n    d_output = {\"X\": X,\n                \"y\": y,\n\
-      \                \"feature_names\": feature_names}\n\n    json_string_output\
-      \ = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ## write json file\n\
-      \    with open(output_json, 'w') as outfile:\n        outfile.write(json_string_output)\n\
-      \nimport argparse\n_parser = argparse.ArgumentParser(prog='Decision tree', description='Impute\
-      \ unknown values (nan).')\n_parser.add_argument(\"--file\", dest=\"file_path\"\
-      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-      --output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+      \    import numpy as np\n    import pandas as pd\n\n    from sklearn.metrics\
+      \ import accuracy_score\n    from sklearn.tree import DecisionTreeClassifier\n\
+      \n    class NumpyArrayEncoder(JSONEncoder):\n        def default(self, obj):\n\
+      \            if isinstance(obj, np.ndarray):\n                return obj.tolist()\n\
+      \            return JSONEncoder.default(self, obj)\n\n    # read in JSON\n \
+      \   with open(file_path, \"r\") as read_file:\n        json_input_data = json.load(read_file)\n\
+      \n    X_train = json_input_data['X_train']\n    y_train = json_input_data['y_train']\n\
+      \    X_test = json_input_data['X_test']\n    y_test = json_input_data['y_test']\n\
+      \    X_feature_names = json_input_data['X_feature_names']\n    y_target_class_names\
+      \ = json_input_data['y_target_class_names']\n\n    # Initialize and train the\
+      \ model\n    model = DecisionTreeClassifier(max_depth=3)\n    model.fit(X_train,\
+      \ y_train)        \n\n    # Get predictions\n    y_pred = model.predict(X_test)\n\
+      \n    # Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    #\
+      \ output: JSON\n    d_output = json_input_data\n    ## add in model results\n\
+      \    d_output['model_results'] = {}\n#    d_output['model_results']['model']\
+      \ = model\n    d_output['model_results']['y_pred'] = y_pred\n    d_output['model_results']['accuracy']\
+      \ = accuracy\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\
+      \n    ## write json file\n    with open(output_json, 'w') as outfile:\n    \
+      \    outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Decision\
+      \ tree', description='Impute unknown values (nan).')\n_parser.add_argument(\"\
+      --file\", dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
       \n_outputs = decision_tree(**_parsed_args)\n"
     args:
