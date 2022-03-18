@@ -33,22 +33,31 @@ implementation:
       \    def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
       \                return obj.tolist()\n            return JSONEncoder.default(self,\
       \ obj)\n\n    # read in JSON\n    with open(file_path, \"r\") as read_file:\n\
-      \        json_input_data = json.load(read_file)\n\n    X_train = np.array(json_input_data['X_train'])\n\
-      \    y_train = np.array(json_input_data['y_train'])\n    X_test = np.array(json_input_data['X_test'])\n\
-      \    y_test = np.array(json_input_data['y_test'])\n    X_feature_names = json_input_data['X_feature_names']\n\
-      \    y_target_class_names = json_input_data['y_target_class_names']\n\n    #\
-      \ Initialize and train the model\n    model = DecisionTreeClassifier(max_depth=3)\n\
-      \    model.fit(X_train, y_train)        \n\n    # Get predictions\n    y_pred\
-      \ = model.predict(X_test)\n\n    # Get accuracy\n    accuracy = accuracy_score(y_test,\
-      \ y_pred)\n\n    # Confusion matrix\n\n    # AUC score\n    sum_y_test_axis_0\
-      \ = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz = np.where(sum_y_test_axis_0\
-      \ > 0)[0]\n    y_test_classes_more_than_one_label = y_test[:, col_idx_y_test_nnz]\n\
-      \    y_pred_classes_more_than_one_label = y_pred[:, col_idx_y_test_nnz]\n  \
-      \  auc_test = roc_auc_score(y_test_classes_more_than_one_label, y_pred_classes_more_than_one_label,\
+      \        json_input_data = json.load(read_file)\n\n    X_train = np.array(json_input_data['X_train'])\
+      \ # JSON has list of lists - cast to np array\n    y_train_labels = np.array(json_input_data['y_train_labels'])\n\
+      \    y_train_one_hot = np.array(json_input_data['y_train_one_hot'])\n    X_test\
+      \ = np.array(json_input_data['X_test'])\n    y_test_labels = np.array(json_input_data['y_test_labels'])\n\
+      \    y_test_one_hot = np.array(json_input_data['y_test_one_hot'])\n    X_feature_names\
+      \ = json_input_data['X_feature_names']\n    y_target_class_names = json_input_data['y_target_class_names']\n\
+      \n    # Initialize and train the model - labels\n    model_labels = DecisionTreeClassifier(max_depth=3)\n\
+      \    model_labels.fit(X_train, y_train_labels)        \n\n    # Initialize and\
+      \ train the model - one-hot\n    model_one_hot = DecisionTreeClassifier(max_depth=3)\n\
+      \    model_one_hot.fit(X_train, y_train_one_hot)   \n\n    # Get predictions\
+      \ - labels (use for confusion matrix computation)\n    y_pred_labels = model_labels.predict(X_test)\n\
+      \n    # Get predictions - one-hot (use for AUC computation)\n    y_pred_one_hot\
+      \ = model_one_hot.predict(X_test)\n\n    # Get accuracy - use labels\n    accuracy\
+      \ = accuracy_score(y_test_labels, y_pred_labels)\n\n    # Get accuracy - use\
+      \ one-hot\n\n    # Confusion matrix - use labels\n    cm = confusion_matrix(y_test_labels,\
+      \ y_pred_labels)\n\n    # AUC score - use one-hot\n    sum_y_test_axis_0 = np.sum(y_test_one_hot,\
+      \ axis=0)\n    col_idx_y_test_nnz = np.where(sum_y_test_axis_0 > 0)[0]\n   \
+      \ y_test_classes_more_than_one_label = y_test_one_hot[:, col_idx_y_test_nnz]\n\
+      \    y_pred_classes_more_than_one_label = y_pred_one_hot[:, col_idx_y_test_nnz]\n\
+      \    auc_test = roc_auc_score(y_test_classes_more_than_one_label, y_pred_classes_more_than_one_label,\
       \ multi_class='ovr') # AUC score true y_test vs predicted\n\n    # output: JSON\n\
       \    d_output = json_input_data\n    ## add in model results\n    d_output['model_results']\
-      \ = {}\n#    d_output['model_results']['model'] = model\n    d_output['model_results']['y_pred']\
-      \ = y_pred\n    d_output['model_results']['accuracy'] = accuracy\n    d_output['model_results']['auc_test']\
+      \ = {}\n#    d_output['model_results']['model'] = model\n    d_output['model_results']['y_pred_labels']\
+      \ = y_pred_labels\n    d_output['model_results']['y_pred_one_hot'] = y_pred_one_hot\n\
+      \    d_output['model_results']['accuracy'] = accuracy\n    d_output['model_results']['auc_test']\
       \ = auc_test\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\
       \n    ## write json file\n    with open(output_json, 'w') as outfile:\n    \
       \    outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Decision\
