@@ -28,19 +28,24 @@ implementation:
       \ (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:\
       \ A string containing path to input data.        \n    \"\"\"\n\n    import\
       \ json \n    from json import JSONEncoder\n    import numpy as np\n    import\
-      \ pandas as pd\n    from sklearn import preprocessing\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
-      \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
+      \ pandas as pd\n    from sklearn import preprocessing\n    from sklearn.model_selection\
+      \ import train_test_split\n\n    class NumpyArrayEncoder(JSONEncoder):\n   \
+      \     def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
       \                return obj.tolist()\n            return JSONEncoder.default(self,\
       \ obj)\n\n    # Read in feature df and make X\n\n    df_feature_matrix = pd.read_csv(filepath_or_buffer=file_path_features)\n\
-      \    df_X = df_feature_matrix\n    feature_names = np.array(df_feature_matrix.columns)\n\
+      \    df_X = df_feature_matrix\n    X = np.array(df_X)\n    feature_names = np.array(df_feature_matrix.columns)\n\
       \n    # Read in target df and make y\n    df_target = pd.read_csv(filepath_or_buffer=file_path_target)\
       \ # one-column df\n    df_y = df_target # one-column df\n    y = np.array(df_y)\n\
-      \n    ## If needed, binarize one-vs-all\n    ## https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelBinarizer.html\n\
+      \n    # Train and test split\n    X_train, X_test, y_train, y_test = train_test_split(\n\
+      \                                            X, y, test_size=0.25, random_state=42)\
+      \ \n\n    # If needed, binarize one-vs-all\n    ## https://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.LabelBinarizer.html\n\
       \    lb = preprocessing.LabelBinarizer()\n    lb.fit(y)\n    target_class_names\
       \ = lb.classes_\n    y_binarized = lb.transform(y) # can be multi-dimensional\
       \ array if there are more than 2 classes\n\n    ## output: JSON\n    d_output\
-      \ = {\"X\": np.array(df_X),\n                \"y\": y_binarized,\n         \
-      \       \"X_feature_names\": feature_names,\n                \"y_target_class_names\"\
+      \ = {\"X\": np.array(X),\n                \"y\": y_binarized,\n            \
+      \    \"X_train\": X_train,\n                \"X_test\": X_test,\n          \
+      \      \"y_train\": y_train,\n                \"y_test\": y_test,\n        \
+      \        \"X_feature_names\": feature_names,\n                \"y_target_class_names\"\
       : target_class_names}\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\
       \n    ### write json file\n    with open(output_json, 'w') as outfile:\n   \
       \     outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Create\
