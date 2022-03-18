@@ -3,8 +3,8 @@ description: Distribute categorical features into separate features.
 inputs:
 - {name: file, type: CSV, description: A string containing path to input data.}
 outputs:
-- {name: output_csv, type: CSV, description: A string containing path to processed
-    data.}
+- {name: output_csv_features, type: CSV}
+- {name: output_csv_target, type: CSV}
 implementation:
   container:
     image: python:3.7
@@ -27,7 +27,8 @@ implementation:
           return file_path
 
       def get_dummies(file_path,
-                      output_csv):
+                      output_csv_features,
+                      output_csv_target):
           """Distribute categorical features into separate features.
               Input: CSV with categorical (and numeric) features
               Output: CSV with categorical features separated into dummies.
@@ -40,18 +41,31 @@ implementation:
           import pandas as pd
 
           df = pd.read_csv(filepath_or_buffer=file_path)
-          df_dummies = pd.get_dummies(df)
-          df_dummies.to_csv(output_csv, index = False, header = True)
+          l_col_names = list(df.columns)
+
+          # assume last col is target
+          df_target = df[l_col_names[-1]]
+
+          # create dummies for every col except last
+          df_features = df[l_col_names[:len(l_col_names)-1]]
+          df_features_dummies = pd.get_dummies(df_features)
+
+          # write outputs
+          df_features_dummies.to_csv(output_csv_features, index = False, header = True)
+          df_target.to_csv(output_csv_target, index = False, header = True)
 
       import argparse
       _parser = argparse.ArgumentParser(prog='Get dummies', description='Distribute categorical features into separate features.')
       _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
-      _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--output-csv-features", dest="output_csv_features", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--output-csv-target", dest="output_csv_target", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
       _parsed_args = vars(_parser.parse_args())
 
       _outputs = get_dummies(**_parsed_args)
     args:
     - --file
     - {inputPath: file}
-    - --output-csv
-    - {outputPath: output_csv}
+    - --output-csv-features
+    - {outputPath: output_csv_features}
+    - --output-csv-target
+    - {outputPath: output_csv_target}
