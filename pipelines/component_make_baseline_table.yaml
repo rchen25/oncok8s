@@ -1,0 +1,70 @@
+name: Make baseline table
+description: Make baseline table
+inputs:
+- {name: file, type: CSV, description: A string containing path to the tarball.}
+outputs:
+- {name: output_csv, type: CSV}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -c
+    - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'pandas==1.1.4' 'numpy==1.21.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m
+      pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'numpy==1.21.2'
+      --user) && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - |
+      def _make_parent_dirs_and_return_path(file_path: str):
+          import os
+          os.makedirs(os.path.dirname(file_path), exist_ok=True)
+          return file_path
+
+      def make_baseline_table(file_path,
+                    output_csv):
+          """Make baseline table
+
+          Args:
+              file_path: A string containing path to the tarball.
+          """
+
+          import numpy as np
+          import pandas as pd
+
+          cols_to_include = ['gender',
+                            'race',
+                            'history_of_neoadjuvant_treatment',
+                            'new_tumor_event_after_initial_treatment',
+                            'eastern_cancer_oncology_group',
+                            'prior_glioma',
+                            'histological_type',
+                            'radiation_therapy',
+                            'days_to_birth',
+                            'days_to_death']
+
+          df = pd.read_csv(filepath_or_buffer=file_path)
+          print(df.columns)
+          df = df[cols_to_include]
+          df['days_to_birth'] = [np.nan if type(x)==str else x for x in df['days_to_birth']]
+          df['days_to_death'] = [np.nan if type(x)==str else x for x in df['days_to_birth']]
+          df_describe = pd.get_dummies(df).describe()
+          df_describe.to_csv(output_csv, index = True, header = True)
+
+      import argparse
+      _parser = argparse.ArgumentParser(prog='Make baseline table', description='Make baseline table')
+      _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+      _parsed_args = vars(_parser.parse_args())
+
+      _outputs = make_baseline_table(**_parsed_args)
+    args:
+    - --file
+    - {inputPath: file}
+    - --output-csv
+    - {outputPath: output_csv}
