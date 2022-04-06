@@ -1,0 +1,295 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pl-gbm-01-download-data-process-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11, pipelines.kubeflow.org/pipeline_compilation_time: '2022-03-24T16:44:30.519327',
+    pipelines.kubeflow.org/pipeline_spec: '{"name": "Pl GBM 01 download data process"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.11}
+spec:
+  entrypoint: pl-gbm-01-download-data-process
+  templates:
+  - name: download-data-kfp-sdk-v2
+    container:
+      args: []
+      command:
+      - sh
+      - -exc
+      - |
+        url="$0"
+        output_path="$1"
+        curl_options="$2"
+        mkdir -p "$(dirname "$output_path")"
+        curl --get "$url" --output "$output_path" $curl_options
+      - https://wiki.cancerimagingarchive.net/download/attachments/1966258/gdc_download_clinical_gbm.tar.gz
+      - /tmp/outputs/Data/data
+      - --location
+      image: byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342
+    outputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/outputs/Data/data}
+    metadata:
+      annotations: {author: Alexey Volkov <alexey.volkov@ark-kun.com>, canonical_location: 'https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml',
+        pipelines.kubeflow.org/component_spec: '{"description": "Downloads data from
+          the specified URL. (Updated for KFP SDK v2.)", "implementation": {"container":
+          {"command": ["sh", "-exc", "url=\"$0\"\noutput_path=\"$1\"\ncurl_options=\"$2\"\nmkdir
+          -p \"$(dirname \"$output_path\")\"\ncurl --get \"$url\" --output \"$output_path\"
+          $curl_options\n", {"inputValue": "Url"}, {"outputPath": "Data"}, {"inputValue":
+          "curl options"}], "image": "byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342"}},
+          "inputs": [{"name": "Url", "type": "String"}, {"default": "--location",
+          "description": "Additional options given to the curl bprogram. See https://curl.haxx.se/docs/manpage.html",
+          "name": "curl options", "type": "String"}], "metadata": {"annotations":
+          {"author": "Alexey Volkov <alexey.volkov@ark-kun.com>", "canonical_location":
+          "https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml"}},
+          "name": "Download data (KFP SDK v2)", "outputs": [{"name": "Data"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "3eafccb9f368ff7282d1670d655c2e1b3ee8fdd241dd6b3d0e1d9de4b6da7c9b", "url":
+          "./component-sdk-v2.yaml"}', pipelines.kubeflow.org/arguments.parameters: '{"Url":
+          "https://wiki.cancerimagingarchive.net/download/attachments/1966258/gdc_download_clinical_gbm.tar.gz",
+          "curl options": "--location"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: pl-gbm-01-download-data-process
+    dag:
+      tasks:
+      - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
+      - name: process-data-tarball
+        template: process-data-tarball
+        dependencies: [download-data-kfp-sdk-v2]
+        arguments:
+          artifacts:
+          - {name: download-data-kfp-sdk-v2-Data, from: '{{tasks.download-data-kfp-sdk-v2.outputs.artifacts.download-data-kfp-sdk-v2-Data}}'}
+  - name: process-data-tarball
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef process_data_tarball(file_path,\n              output_csv):\n    \"\"\
+        \"Go through contents for data tarball.\n        - Assumes MANIFEST.txt is\
+        \ present\n        - Reads MANIFEST.txt\n        - Identifies filenames of\
+        \ data\n        - Loops through each filename and loads data\n\n    Args:\n\
+        \        file_path: A string containing path to the tarball.\n    \"\"\"\n\
+        \    import glob\n    import numpy as np\n    import pandas as pd\n    import\
+        \ tarfile\n    from functools import reduce\n\n    tarfile.open(name=file_path,\
+        \ mode=\"r|gz\").extractall('data_extracted')\n    l_tarball_contents = tarfile.open(name=file_path,\
+        \ mode=\"r|gz\").getnames()\n\n    # all dataframes\n    d_df_data = {}\n\n\
+        \    l_tarball_contents_to_include = ['57683e22-a8ea-4eca-bfcf-f708cf459546/nationwidechildrens.org_clinical_patient_gbm.txt']\n\
+        \n    for name in l_tarball_contents_to_include:\n        if name == 'MANIFEST.txt':\n\
+        \            continue\n        name_short = name.split(\"nationwidechildrens.org_\"\
+        )[-1]\n        archive_filename = 'data_extracted/' + name\n        df = pd.read_csv(glob.glob(archive_filename)[0],\
+        \ header = None, sep = \"\\t\")\n        df.columns = list(df.iloc[1])\n \
+        \       df = df.drop([0, 1, 2])\n        if \"form_completion_date\" in df.columns:\n\
+        \            del df[\"form_completion_date\"] \n        d_df_data[name_short]\
+        \ = df\n\n    # merge all df's\n    l_join_cols = ['bcr_patient_uuid', 'bcr_patient_barcode']\n\
+        \    df_merged = reduce(lambda  left,right: pd.merge(left,right,on=list(set(left.columns).intersection(set(right.columns))),\n\
+        \                                                how='outer'), list(d_df_data.values()))\n\
+        \n    # drop columns\n    df_merged = df_merged.drop_duplicates()\n\n    #\
+        \ replace '[Not Available]'\n    df_merged = df_merged.replace('[Not Available]',\
+        \ np.nan)\n\n    l_cols_keep = [\n#        bcr_patient_uuid\n#        bcr_patient_barcode\n\
+        #        form_completion_date\n        'prior_glioma',\n#        tissue_prospective_collection_indicator\n\
+        #        tissue_retrospective_collection_indicator\n        'gender',\n  \
+        \      'days_to_birth',\n        'race',\n        'ethnicity',\n        'other_dx',\n\
+        \        'history_of_neoadjuvant_treatment',\n#        year_of_initial_pathologic_diagnosis\n\
+        #        initial_pathologic_diagnosis_method\n#        init_pathology_dx_method_other\n\
+        \        'vital_status',\n#        days_to_last_followup\n        'days_to_death',\n\
+        \        'person_neoplasm_cancer_status',\n#        'karnofsky_performance_score',\n\
+        \        'eastern_cancer_oncology_group',\n#        performance_status_scale_timing\n\
+        \        'radiation_therapy',\n        'postoperative_rx_tx',\n#        primary_therapy_outcome_success\n\
+        \        'new_tumor_event_after_initial_treatment',\n        'age_at_initial_pathologic_diagnosis',\n\
+        \        'anatomic_neoplasm_subdivision',\n#        days_to_initial_pathologic_diagnosis\n\
+        #        disease_code\n        'histological_type',\n#        icd_10\n#  \
+        \      icd_o_3_histology\n#        icd_o_3_site\n#        informed_consent_verified\n\
+        #        patient_id\n#        project_code\n        'tissue_source_site'\n\
+        #        'tumor_tissue_site'\n    ]\n\n#     # columns to keep -- FROM ALL\
+        \ TABLES COMBINED\n#     l_cols_keep_all_clinical_tables = [\n# ##       \
+        \ 'days_to_new_tumor_event_after_initial_treatment',\n#                  \
+        \   'additional_radiation_therapy',\n#                    'additional_pharmaceutical_therapy',\n\
+        # ##                   'days_to_new_tumor_event_additional_surgery_procedure',\n\
+        #                    'new_neoplasm_event_type',\n#                    'new_tumor_event_additional_surgery_procedure',\n\
+        \n#                    # 'bcr_drug_barcode',\n#                  #  'bcr_drug_uuid','\n\
+        #                    'drug_name',\n#                    'clinical_trail_drug_classification',\n\
+        #                    'therapy_type',\n# #                    'days_to_drug_therapy_start',\n\
+        # #                    'therapy_ongoing',\n# #                    'days_to_drug_therapy_end',\n\
+        # #                    'measure_of_response',\n# #                    'days_to_stem_cell_transplantation',\n\
+        # #                    'pharm_regimen',\n# #                    'pharm_regimen_other',\n\
+        # #                    'number_cycles',\n# #                    'therapy_type_notes',\n\
+        # #                    'prescribed_dose_units',\n# #                    'total_dose_units',\n\
+        # #                    'prescribed_dose',\n# #                    'regimen_number',\n\
+        # #                    'route_of_administration',\n#                    'stem_cell_transplantation',\n\
+        #                    'stem_cell_transplantation_type',\n# #              \
+        \     'regimen_indication',\n# #                   'regimen_indication_notes',\n\
+        # #                   'total_dose',\n#                    'tx_on_clinical_trial',\n\
+        \n# #                   'bcr_radiation_barcode',\n# #                   'bcr_radiation_uuid',\n\
+        #                    'radiation_type',\n# #                   'anatomic_treatment_site',\n\
+        # #                   'radiation_dosage',\n# #                   'units',\n\
+        # #                   'numfractions',\n# #                   'days_to_radiation_therapy_start',\n\
+        # #                   'radiation_treatment_ongoing',\n# #                \
+        \   'days_to_radiation_therapy_end',\n# #                   'course_number',\n\
+        # #                   'radiation_type_notes',\n#                    'prior_glioma',\n\
+        # #                   'tissue_prospective_collection_indicator',\n# #    \
+        \               'tissue_retrospective_collection_indicator',\n\n#        \
+        \            'gender',\n#                    'days_to_birth',\n#         \
+        \           'race',\n#                    'ethnicity',\n#                \
+        \    'other_dx',\n#                    'history_of_neoadjuvant_treatment',\n\
+        # #                   'year_of_initial_pathologic_diagnosis',\n# #       \
+        \            'initial_pathologic_diagnosis_method',\n# #                 \
+        \  'init_pathology_dx_method_other',\n#                    'vital_status',\n\
+        # ##                   'days_to_last_followup',\n#                    'days_to_death',\n\
+        #                    'person_neoplasm_cancer_status',\n# ##              \
+        \     'karnofsky_performance_score',\n#                    'eastern_cancer_oncology_group',\n\
+        # #                   'performance_status_scale_timing',\n#              \
+        \      'radiation_therapy',\n#                    'postoperative_rx_tx',\n\
+        #                    'primary_therapy_outcome_success',\n#               \
+        \     'new_tumor_event_after_initial_treatment',\n# ##                   'age_at_initial_pathologic_diagnosis',\n\
+        #                    'anatomic_neoplasm_subdivision',\n# ##              \
+        \     'days_to_initial_pathologic_diagnosis',\n\n# #                   'disease_code',\n\
+        #                    'histological_type',\n# #                   'icd_10',\n\
+        # #                   'icd_o_3_histology',\n# #                   'icd_o_3_site',\n\
+        # #                   'informed_consent_verified',\n# #                  \
+        \ 'patient_id',\n# #                   'project_code',\n# #              \
+        \     'tissue_source_site',\n#                    'tumor_tissue_site',\n\n\
+        # #                   'bcr_omf_barcode',\n# #                   'bcr_omf_uuid',\n\
+        #                    'malignancy_type',\n# ##                   'days_to_other_malignancy_dx',\n\
+        #                    'surgery_indicator',\n#                    'surgery_type',\n\
+        # ##                   'days_to_surgical_resection',\n#                  \
+        \  'drug_tx_indicator',\n#                    'drug_tx_extent',\n#       \
+        \             'radiation_tx_indicator',\n#                    'radiation_tx_extent',\n\
+        #                    'rad_tx_to_site_of_primary_tumor',\n# #             \
+        \      'system_version',\n#                    'pathologic_T',\n#        \
+        \            'pathologic_N',\n#                    'pathologic_M',\n#    \
+        \                'pathologic_stage',\n#                    'clinical_stage',\n\
+        #                    'other_malignancy_anatomic_site',\n#                \
+        \    'other_malignancy_anatomic_site_text',\n#                    'other_malignancy_histological_type',\n\
+        #                    'other_malignancy_histological_type_text',\n#       \
+        \             'other_malignancy_laterality',\n#                    'stage_other',\n\
+        \n# #                   'bcr_followup_barcode',\n# #                   'bcr_followup_uuid',\n\
+        # #                   'followup_case_report_form_submission_reason',\n# #\
+        \                   'lost_follow_up',\n#                    'followup_treatment_success'\
+        \                  \n#                   ]\n\n    df_merged_cols_for_output\
+        \ = df_merged.loc[:, l_cols_keep]\n\n    # resolve missing values encoded\
+        \ as strings for numerical features\n    df_merged_cols_for_output['days_to_birth']\
+        \ = [np.nan if type(x)==str else x for x in df_merged_cols_for_output['days_to_birth']]\n\
+        \    df_merged_cols_for_output['days_to_death'] = [np.nan if type(x)==str\
+        \ else x for x in df_merged_cols_for_output['days_to_death']]\n    df_merged_cols_for_output['age_at_initial_pathologic_diagnosis']\
+        \ = [np.nan if type(x)==str else x for x in df_merged_cols_for_output['age_at_initial_pathologic_diagnosis']]\n\
+        \n    # columns to dummy\n##    true_label_col = ['primary_therapy_outcome_success']\n\
+        #    cols_to_dummy = [x for x in l_cols_keep if (x not in true_label_col)]\n\
+        \n#     df_merged_cols_for_output = pd.get_dummies(df_merged_cols_for_output)\n\
+        \n    df_merged_cols_for_output.to_csv(output_csv, index=False, header=True)\n\
+        \nimport argparse\n_parser = argparse.ArgumentParser(prog='Process data tarball',\
+        \ description='Go through contents for data tarball.')\n_parser.add_argument(\"\
+        --file\", dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-csv\", dest=\"output_csv\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = process_data_tarball(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: process-data-tarball-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.11
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Go through
+          contents for data tarball.", "implementation": {"container": {"args": ["--file",
+          {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef process_data_tarball(file_path,\n              output_csv):\n    \"\"\"Go
+          through contents for data tarball.\n        - Assumes MANIFEST.txt is present\n        -
+          Reads MANIFEST.txt\n        - Identifies filenames of data\n        - Loops
+          through each filename and loads data\n\n    Args:\n        file_path: A
+          string containing path to the tarball.\n    \"\"\"\n    import glob\n    import
+          numpy as np\n    import pandas as pd\n    import tarfile\n    from functools
+          import reduce\n\n    tarfile.open(name=file_path, mode=\"r|gz\").extractall(''data_extracted'')\n    l_tarball_contents
+          = tarfile.open(name=file_path, mode=\"r|gz\").getnames()\n\n    # all dataframes\n    d_df_data
+          = {}\n\n    l_tarball_contents_to_include = [''57683e22-a8ea-4eca-bfcf-f708cf459546/nationwidechildrens.org_clinical_patient_gbm.txt'']\n\n    for
+          name in l_tarball_contents_to_include:\n        if name == ''MANIFEST.txt'':\n            continue\n        name_short
+          = name.split(\"nationwidechildrens.org_\")[-1]\n        archive_filename
+          = ''data_extracted/'' + name\n        df = pd.read_csv(glob.glob(archive_filename)[0],
+          header = None, sep = \"\\t\")\n        df.columns = list(df.iloc[1])\n        df
+          = df.drop([0, 1, 2])\n        if \"form_completion_date\" in df.columns:\n            del
+          df[\"form_completion_date\"] \n        d_df_data[name_short] = df\n\n    #
+          merge all df''s\n    l_join_cols = [''bcr_patient_uuid'', ''bcr_patient_barcode'']\n    df_merged
+          = reduce(lambda  left,right: pd.merge(left,right,on=list(set(left.columns).intersection(set(right.columns))),\n                                                how=''outer''),
+          list(d_df_data.values()))\n\n    # drop columns\n    df_merged = df_merged.drop_duplicates()\n\n    #
+          replace ''[Not Available]''\n    df_merged = df_merged.replace(''[Not Available]'',
+          np.nan)\n\n    l_cols_keep = [\n#        bcr_patient_uuid\n#        bcr_patient_barcode\n#        form_completion_date\n        ''prior_glioma'',\n#        tissue_prospective_collection_indicator\n#        tissue_retrospective_collection_indicator\n        ''gender'',\n        ''days_to_birth'',\n        ''race'',\n        ''ethnicity'',\n        ''other_dx'',\n        ''history_of_neoadjuvant_treatment'',\n#        year_of_initial_pathologic_diagnosis\n#        initial_pathologic_diagnosis_method\n#        init_pathology_dx_method_other\n        ''vital_status'',\n#        days_to_last_followup\n        ''days_to_death'',\n        ''person_neoplasm_cancer_status'',\n#        ''karnofsky_performance_score'',\n        ''eastern_cancer_oncology_group'',\n#        performance_status_scale_timing\n        ''radiation_therapy'',\n        ''postoperative_rx_tx'',\n#        primary_therapy_outcome_success\n        ''new_tumor_event_after_initial_treatment'',\n        ''age_at_initial_pathologic_diagnosis'',\n        ''anatomic_neoplasm_subdivision'',\n#        days_to_initial_pathologic_diagnosis\n#        disease_code\n        ''histological_type'',\n#        icd_10\n#        icd_o_3_histology\n#        icd_o_3_site\n#        informed_consent_verified\n#        patient_id\n#        project_code\n        ''tissue_source_site''\n#        ''tumor_tissue_site''\n    ]\n\n#     #
+          columns to keep -- FROM ALL TABLES COMBINED\n#     l_cols_keep_all_clinical_tables
+          = [\n# ##        ''days_to_new_tumor_event_after_initial_treatment'',\n#                     ''additional_radiation_therapy'',\n#                    ''additional_pharmaceutical_therapy'',\n#
+          ##                   ''days_to_new_tumor_event_additional_surgery_procedure'',\n#                    ''new_neoplasm_event_type'',\n#                    ''new_tumor_event_additional_surgery_procedure'',\n\n#                    #
+          ''bcr_drug_barcode'',\n#                  #  ''bcr_drug_uuid'',''\n#                    ''drug_name'',\n#                    ''clinical_trail_drug_classification'',\n#                    ''therapy_type'',\n#
+          #                    ''days_to_drug_therapy_start'',\n# #                    ''therapy_ongoing'',\n#
+          #                    ''days_to_drug_therapy_end'',\n# #                    ''measure_of_response'',\n#
+          #                    ''days_to_stem_cell_transplantation'',\n# #                    ''pharm_regimen'',\n#
+          #                    ''pharm_regimen_other'',\n# #                    ''number_cycles'',\n#
+          #                    ''therapy_type_notes'',\n# #                    ''prescribed_dose_units'',\n#
+          #                    ''total_dose_units'',\n# #                    ''prescribed_dose'',\n#
+          #                    ''regimen_number'',\n# #                    ''route_of_administration'',\n#                    ''stem_cell_transplantation'',\n#                    ''stem_cell_transplantation_type'',\n#
+          #                   ''regimen_indication'',\n# #                   ''regimen_indication_notes'',\n#
+          #                   ''total_dose'',\n#                    ''tx_on_clinical_trial'',\n\n#
+          #                   ''bcr_radiation_barcode'',\n# #                   ''bcr_radiation_uuid'',\n#                    ''radiation_type'',\n#
+          #                   ''anatomic_treatment_site'',\n# #                   ''radiation_dosage'',\n#
+          #                   ''units'',\n# #                   ''numfractions'',\n#
+          #                   ''days_to_radiation_therapy_start'',\n# #                   ''radiation_treatment_ongoing'',\n#
+          #                   ''days_to_radiation_therapy_end'',\n# #                   ''course_number'',\n#
+          #                   ''radiation_type_notes'',\n#                    ''prior_glioma'',\n#
+          #                   ''tissue_prospective_collection_indicator'',\n# #                   ''tissue_retrospective_collection_indicator'',\n\n#                    ''gender'',\n#                    ''days_to_birth'',\n#                    ''race'',\n#                    ''ethnicity'',\n#                    ''other_dx'',\n#                    ''history_of_neoadjuvant_treatment'',\n#
+          #                   ''year_of_initial_pathologic_diagnosis'',\n# #                   ''initial_pathologic_diagnosis_method'',\n#
+          #                   ''init_pathology_dx_method_other'',\n#                    ''vital_status'',\n#
+          ##                   ''days_to_last_followup'',\n#                    ''days_to_death'',\n#                    ''person_neoplasm_cancer_status'',\n#
+          ##                   ''karnofsky_performance_score'',\n#                    ''eastern_cancer_oncology_group'',\n#
+          #                   ''performance_status_scale_timing'',\n#                    ''radiation_therapy'',\n#                    ''postoperative_rx_tx'',\n#                    ''primary_therapy_outcome_success'',\n#                    ''new_tumor_event_after_initial_treatment'',\n#
+          ##                   ''age_at_initial_pathologic_diagnosis'',\n#                    ''anatomic_neoplasm_subdivision'',\n#
+          ##                   ''days_to_initial_pathologic_diagnosis'',\n\n# #                   ''disease_code'',\n#                    ''histological_type'',\n#
+          #                   ''icd_10'',\n# #                   ''icd_o_3_histology'',\n#
+          #                   ''icd_o_3_site'',\n# #                   ''informed_consent_verified'',\n#
+          #                   ''patient_id'',\n# #                   ''project_code'',\n#
+          #                   ''tissue_source_site'',\n#                    ''tumor_tissue_site'',\n\n#
+          #                   ''bcr_omf_barcode'',\n# #                   ''bcr_omf_uuid'',\n#                    ''malignancy_type'',\n#
+          ##                   ''days_to_other_malignancy_dx'',\n#                    ''surgery_indicator'',\n#                    ''surgery_type'',\n#
+          ##                   ''days_to_surgical_resection'',\n#                    ''drug_tx_indicator'',\n#                    ''drug_tx_extent'',\n#                    ''radiation_tx_indicator'',\n#                    ''radiation_tx_extent'',\n#                    ''rad_tx_to_site_of_primary_tumor'',\n#
+          #                   ''system_version'',\n#                    ''pathologic_T'',\n#                    ''pathologic_N'',\n#                    ''pathologic_M'',\n#                    ''pathologic_stage'',\n#                    ''clinical_stage'',\n#                    ''other_malignancy_anatomic_site'',\n#                    ''other_malignancy_anatomic_site_text'',\n#                    ''other_malignancy_histological_type'',\n#                    ''other_malignancy_histological_type_text'',\n#                    ''other_malignancy_laterality'',\n#                    ''stage_other'',\n\n#
+          #                   ''bcr_followup_barcode'',\n# #                   ''bcr_followup_uuid'',\n#
+          #                   ''followup_case_report_form_submission_reason'',\n#
+          #                   ''lost_follow_up'',\n#                    ''followup_treatment_success''                  \n#                   ]\n\n    df_merged_cols_for_output
+          = df_merged.loc[:, l_cols_keep]\n\n    # resolve missing values encoded
+          as strings for numerical features\n    df_merged_cols_for_output[''days_to_birth'']
+          = [np.nan if type(x)==str else x for x in df_merged_cols_for_output[''days_to_birth'']]\n    df_merged_cols_for_output[''days_to_death'']
+          = [np.nan if type(x)==str else x for x in df_merged_cols_for_output[''days_to_death'']]\n    df_merged_cols_for_output[''age_at_initial_pathologic_diagnosis'']
+          = [np.nan if type(x)==str else x for x in df_merged_cols_for_output[''age_at_initial_pathologic_diagnosis'']]\n\n    #
+          columns to dummy\n##    true_label_col = [''primary_therapy_outcome_success'']\n#    cols_to_dummy
+          = [x for x in l_cols_keep if (x not in true_label_col)]\n\n#     df_merged_cols_for_output
+          = pd.get_dummies(df_merged_cols_for_output)\n\n    df_merged_cols_for_output.to_csv(output_csv,
+          index=False, header=True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Process
+          data tarball'', description=''Go through contents for data tarball.'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = process_data_tarball(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"description": "A string containing path to the tarball.", "name": "file",
+          "type": "Tarball"}], "name": "Process data tarball", "outputs": [{"name":
+          "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  arguments:
+    parameters: []
+  serviceAccountName: pipeline-runner
