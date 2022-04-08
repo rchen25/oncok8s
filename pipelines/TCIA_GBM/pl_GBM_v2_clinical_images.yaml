@@ -1,0 +1,1113 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: pl-gbm-v2-clinical-images-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T14:45:39.944130',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
+      data processing", "inputs": [{"description": "name of column to use as class
+      label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
+      {"description": "other columns to exclude, other than the ones automatically
+      \nfiltered out in make_dfs(); separate colnames by '',''", "name": "s_colnames_to_exclude"},
+      {"name": "test_set_size"}], "name": "Pl GBM v2 clinical images"}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12}
+spec:
+  entrypoint: pl-gbm-v2-clinical-images
+  templates:
+  - name: create-model-inputs
+    container:
+      args: [--file-path-features, /tmp/inputs/file_path_features/data, --file-path-class-labels,
+        /tmp/inputs/file_path_class_labels/data, --test-set-size, '{{inputs.parameters.test_set_size}}',
+        --output-X-train, /tmp/outputs/output_X_train/data, --output-X-test, /tmp/outputs/output_X_test/data,
+        --output-y-train, /tmp/outputs/output_y_train/data, --output-y-test, /tmp/outputs/output_y_test/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def create_model_inputs(file_path_features,
+                                file_path_class_labels,
+                                test_set_size,
+                                output_X_train,
+                                output_X_test,
+                                output_y_train,
+                                output_y_test):
+            """Create train and test sets
+
+            Args:
+                file_path_features: A string containing path / pipeline component output
+                file_path_class_labels: A string containing path to data / pipeline component output
+                test_set_size: [optional, default=0.25] proportion to use for the test set
+            """
+            import numpy as np
+
+            import pandas as pd
+            from sklearn import datasets
+            from sklearn.model_selection import train_test_split
+
+            X = pd.read_csv(filepath_or_buffer=file_path_features)
+            y = pd.read_csv(filepath_or_buffer=file_path_class_labels)
+
+            try:
+                test_set_size_for_model_training = float(test_set_size)
+            except:
+                test_set_size_for_model_training = 0.25
+            if test_set_size_for_model_training <= 0 or test_set_size_for_model_training >= 1:
+                test_set_size_for_model_training = 0.25
+            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)
+
+            X_train.to_csv(output_X_train, header=True, index=False)
+            X_test.to_csv(output_X_test, header=True, index=False)
+            y_train.to_csv(output_y_train, header=True, index=False)
+            y_test.to_csv(output_y_test, header=True, index=False)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Create model inputs', description='Create train and test sets')
+        _parser.add_argument("--file-path-features", dest="file_path_features", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-class-labels", dest="file_path_class_labels", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--test-set-size", dest="test_set_size", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-X-train", dest="output_X_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-X-test", dest="output_X_test", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-y-train", dest="output_y_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-y-test", dest="output_y_test", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = create_model_inputs(**_parsed_args)
+      image: python:3.7
+    inputs:
+      parameters:
+      - {name: test_set_size}
+      artifacts:
+      - {name: get-dummies-output_csv_target, path: /tmp/inputs/file_path_class_labels/data}
+      - {name: scale-df-output_csv, path: /tmp/inputs/file_path_features/data}
+    outputs:
+      artifacts:
+      - {name: create-model-inputs-output_X_test, path: /tmp/outputs/output_X_test/data}
+      - {name: create-model-inputs-output_X_train, path: /tmp/outputs/output_X_train/data}
+      - {name: create-model-inputs-output_y_test, path: /tmp/outputs/output_y_test/data}
+      - {name: create-model-inputs-output_y_train, path: /tmp/outputs/output_y_train/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Create
+          train and test sets", "implementation": {"container": {"args": ["--file-path-features",
+          {"inputPath": "file_path_features"}, "--file-path-class-labels", {"inputPath":
+          "file_path_class_labels"}, "--test-set-size", {"inputValue": "test_set_size"},
+          "--output-X-train", {"outputPath": "output_X_train"}, "--output-X-test",
+          {"outputPath": "output_X_test"}, "--output-y-train", {"outputPath": "output_y_train"},
+          "--output-y-test", {"outputPath": "output_y_test"}], "command": ["sh", "-c",
+          "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
+          train and test sets\n\n    Args:\n        file_path_features: A string containing
+          path / pipeline component output\n        file_path_class_labels: A string
+          containing path to data / pipeline component output\n        test_set_size:
+          [optional, default=0.25] proportion to use for the test set\n    \"\"\"\n    import
+          numpy as np\n\n    import pandas as pd\n    from sklearn import datasets\n    from
+          sklearn.model_selection import train_test_split\n\n    X = pd.read_csv(filepath_or_buffer=file_path_features)\n    y
+          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    try:\n        test_set_size_for_model_training
+          = float(test_set_size)\n    except:\n        test_set_size_for_model_training
+          = 0.25\n    if test_set_size_for_model_training <= 0 or test_set_size_for_model_training
+          >= 1:\n        test_set_size_for_model_training = 0.25\n    X_train, X_test,
+          y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)\n\n    X_train.to_csv(output_X_train,
+          header=True, index=False)\n    X_test.to_csv(output_X_test, header=True,
+          index=False)\n    y_train.to_csv(output_y_train, header=True, index=False)\n    y_test.to_csv(output_y_test,
+          header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Create
+          model inputs'', description=''Create train and test sets'')\n_parser.add_argument(\"--file-path-features\",
+          dest=\"file_path_features\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-class-labels\",
+          dest=\"file_path_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--test-set-size\",
+          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
+          dest=\"output_X_train\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-test\", dest=\"output_X_test\",
+          type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-train\",
+          dest=\"output_y_train\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-test\", dest=\"output_y_test\",
+          type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
+          = vars(_parser.parse_args())\n\n_outputs = create_model_inputs(**_parsed_args)\n"],
+          "image": "python:3.7"}}, "inputs": [{"description": "A string containing
+          path / pipeline component output", "name": "file_path_features", "type":
+          "CSV"}, {"description": "A string containing path to data / pipeline component
+          output", "name": "file_path_class_labels", "type": "CSV"}, {"description":
+          "[optional, default=0.25] proportion to use for the test set", "name": "test_set_size",
+          "type": "String"}], "name": "Create model inputs", "outputs": [{"name":
+          "output_X_train", "type": "CSV"}, {"name": "output_X_test", "type": "CSV"},
+          {"name": "output_y_train", "type": "CSV"}, {"name": "output_y_test", "type":
+          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"test_set_size":
+          "{{inputs.parameters.test_set_size}}"}'}
+  - name: download-data-kfp-sdk-v2
+    container:
+      args: []
+      command:
+      - sh
+      - -exc
+      - |
+        url="$0"
+        output_path="$1"
+        curl_options="$2"
+        mkdir -p "$(dirname "$output_path")"
+        curl --get "$url" --output "$output_path" $curl_options
+      - https://wiki.cancerimagingarchive.net/download/attachments/1966258/gdc_download_clinical_gbm.tar.gz
+      - /tmp/outputs/Data/data
+      - --location
+      image: byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342
+    outputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/outputs/Data/data}
+    metadata:
+      annotations: {author: Alexey Volkov <alexey.volkov@ark-kun.com>, canonical_location: 'https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml',
+        pipelines.kubeflow.org/component_spec: '{"description": "Downloads data from
+          the specified URL. (Updated for KFP SDK v2.)", "implementation": {"container":
+          {"command": ["sh", "-exc", "url=\"$0\"\noutput_path=\"$1\"\ncurl_options=\"$2\"\nmkdir
+          -p \"$(dirname \"$output_path\")\"\ncurl --get \"$url\" --output \"$output_path\"
+          $curl_options\n", {"inputValue": "Url"}, {"outputPath": "Data"}, {"inputValue":
+          "curl options"}], "image": "byrnedo/alpine-curl@sha256:548379d0a4a0c08b9e55d9d87a592b7d35d9ab3037f4936f5ccd09d0b625a342"}},
+          "inputs": [{"name": "Url", "type": "String"}, {"default": "--location",
+          "description": "Additional options given to the curl bprogram. See https://curl.haxx.se/docs/manpage.html",
+          "name": "curl options", "type": "String"}], "metadata": {"annotations":
+          {"author": "Alexey Volkov <alexey.volkov@ark-kun.com>", "canonical_location":
+          "https://raw.githubusercontent.com/Ark-kun/pipeline_components/master/components/web/Download/component.yaml"}},
+          "name": "Download data (KFP SDK v2)", "outputs": [{"name": "Data"}]}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "3eafccb9f368ff7282d1670d655c2e1b3ee8fdd241dd6b3d0e1d9de4b6da7c9b", "url":
+          "./component-sdk-v2.yaml"}', pipelines.kubeflow.org/arguments.parameters: '{"Url":
+          "https://wiki.cancerimagingarchive.net/download/attachments/1966258/gdc_download_clinical_gbm.tar.gz",
+          "curl options": "--location"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: download-images
+    container:
+      args: [--file-path-patient-list, /tmp/inputs/file_path_patient_list/data, --output-csv,
+        /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef download_images(file_path_patient_list,\n                    output_csv):\n\
+        \    \"\"\"Acquisition of images associated with patients listed\n       \
+        \ in master `patient` table. \n\n    Args:\n        file_path: A string containing\
+        \ path to the tarball.\n    \"\"\"\n    import pandas as pd\n\n    from functools\
+        \ import reduce\n    import glob\n    import json \n    from json import JSONEncoder\n\
+        \    import numpy as np\n    import tarfile\n\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\
+        \n    df_patient_list.to_csv(output_csv)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Download\
+        \ images', description='Acquisition of images associated with patients listed')\n\
+        _parser.add_argument(\"--file-path-patient-list\", dest=\"file_path_patient_list\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-csv\", dest=\"output_csv\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = download_images(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: process-data-tarball-output_patient_id_list, path: /tmp/inputs/file_path_patient_list/data}
+    outputs:
+      artifacts:
+      - {name: download-images-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Acquisition
+          of images associated with patients listed", "implementation": {"container":
+          {"args": ["--file-path-patient-list", {"inputPath": "file_path_patient_list"},
+          "--output-csv", {"outputPath": "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef download_images(file_path_patient_list,\n                    output_csv):\n    \"\"\"Acquisition
+          of images associated with patients listed\n        in master `patient` table.
+          \n\n    Args:\n        file_path: A string containing path to the tarball.\n    \"\"\"\n    import
+          pandas as pd\n\n    from functools import reduce\n    import glob\n    import
+          json \n    from json import JSONEncoder\n    import numpy as np\n    import
+          tarfile\n\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\n    df_patient_list.to_csv(output_csv)\n\nimport
+          argparse\n_parser = argparse.ArgumentParser(prog=''Download images'', description=''Acquisition
+          of images associated with patients listed'')\n_parser.add_argument(\"--file-path-patient-list\",
+          dest=\"file_path_patient_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = download_images(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"name": "file_path_patient_list", "type": "CSV"}], "name": "Download images",
+          "outputs": [{"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: get-dummies
+    container:
+      args: [--file, /tmp/inputs/file/data, --class-label-colname, '{{inputs.parameters.user_input_class_label_column_name}}',
+        --s-colnames-to-exclude, '{{inputs.parameters.s_colnames_to_exclude}}', --output-csv-features,
+        /tmp/outputs/output_csv_features/data, --output-csv-target, /tmp/outputs/output_csv_target/data,
+        --output-csv-target-class-labels, /tmp/outputs/output_csv_target_class_labels/data,
+        --output-csv-feature-list, /tmp/outputs/output_csv_feature_list/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef get_dummies(file_path,\n                class_label_colname,\n     \
+        \           s_colnames_to_exclude,\n                output_csv_features,\n\
+        \                output_csv_target,\n                output_csv_target_class_labels,\n\
+        \                output_csv_feature_list):\n    \"\"\"Distribute categorical\
+        \ features into separate features.\n        Input: CSV with categorical (and\
+        \ numeric) features. Assume last \n            feature is target label. \n\
+        \        Output: CSV with categorical features separated into dummies.\n\n\
+        \    Args:\n        file_path: A string containing path to input data.\n \
+        \       output_csv: A string containing path to processed data.\n    \"\"\"\
+        \n    import glob\n    import numpy as np\n    import pandas as pd\n    from\
+        \ sklearn import preprocessing\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\
+        \    l_col_names = list(df.columns)\n\n    # isolate column for target class\
+        \ label; if null, use last column\n    target_class_label = class_label_colname\
+        \ if str(class_label_colname) != '' else l_col_names[-1]\n    ## remove all\
+        \ rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n\
+        \n    ## extract target class column\n    df_target_raw = df[target_class_label]\
+        \ # from input parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
+        \ # fit to data for target class to find all classes\n    target_class_label_names\
+        \ = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\
+        \n    df_target_class_labels = pd.DataFrame({'class': target_class_label_names})\n\
+        \    d_target_class_label_idx = dict(zip(list(df_target_class_labels['class']),\
+        \ list(df_target_class_labels.index)))\n\n    l_target_column = [d_target_class_label_idx[x]\
+        \ for x in df[target_class_label]]\n    df_target = pd.DataFrame([])\n   \
+        \ df_target[target_class_label] = l_target_column# 1-column of multiple classes\n\
+        \n    # create dummies for every col except class label col\n    df_features\
+        \ = df[[x for x in l_col_names if x != class_label_colname]] # features are\
+        \ all colnames except target class\n\n    # exclude any other colnames (other\
+        \ than target class column), if specified; \n    ## performed on feature matrix\
+        \ after dummies are removed\n    if str(s_colnames_to_exclude) != '':\n  \
+        \      l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n        l_colnames_in_this_df_to_exclude\
+        \ = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features\
+        \ = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n\
+        \    df_features_dummies = pd.get_dummies(df_features)\n\n    # feature list\n\
+        \    l_features = df_features_dummies.columns\n    df_feature_list = pd.DataFrame({'feature':\
+        \ l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
+        \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
+        \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
+        \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
+        \ index = True, header = False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
+        \ dummies', description='Distribute categorical features into separate features.')\n\
+        _parser.add_argument(\"--file\", dest=\"file_path\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--class-label-colname\"\
+        , dest=\"class_label_colname\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--s-colnames-to-exclude\", dest=\"s_colnames_to_exclude\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-csv-features\", dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\"\
+        , dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target-class-labels\"\
+        , dest=\"output_csv_target_class_labels\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-feature-list\"\
+        , dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = get_dummies(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      parameters:
+      - {name: s_colnames_to_exclude}
+      - {name: user_input_class_label_column_name}
+      artifacts:
+      - {name: process-data-tarball-output_master_df, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: get-dummies-output_csv_feature_list, path: /tmp/outputs/output_csv_feature_list/data}
+      - {name: get-dummies-output_csv_features, path: /tmp/outputs/output_csv_features/data}
+      - {name: get-dummies-output_csv_target, path: /tmp/outputs/output_csv_target/data}
+      - {name: get-dummies-output_csv_target_class_labels, path: /tmp/outputs/output_csv_target_class_labels/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Distribute
+          categorical features into separate features.", "implementation": {"container":
+          {"args": ["--file", {"inputPath": "file"}, "--class-label-colname", {"inputValue":
+          "class_label_colname"}, "--s-colnames-to-exclude", {"inputValue": "s_colnames_to_exclude"},
+          "--output-csv-features", {"outputPath": "output_csv_features"}, "--output-csv-target",
+          {"outputPath": "output_csv_target"}, "--output-csv-target-class-labels",
+          {"outputPath": "output_csv_target_class_labels"}, "--output-csv-feature-list",
+          {"outputPath": "output_csv_feature_list"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                class_label_colname,\n                s_colnames_to_exclude,\n                output_csv_features,\n                output_csv_target,\n                output_csv_target_class_labels,\n                output_csv_feature_list):\n    \"\"\"Distribute
+          categorical features into separate features.\n        Input: CSV with categorical
+          (and numeric) features. Assume last \n            feature is target label.
+          \n        Output: CSV with categorical features separated into dummies.\n\n    Args:\n        file_path:
+          A string containing path to input data.\n        output_csv: A string containing
+          path to processed data.\n    \"\"\"\n    import glob\n    import numpy as
+          np\n    import pandas as pd\n    from sklearn import preprocessing\n\n    df
+          = pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names = list(df.columns)\n\n    #
+          isolate column for target class label; if null, use last column\n    target_class_label
+          = class_label_colname if str(class_label_colname) != '''' else l_col_names[-1]\n    ##
+          remove all rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n\n    ##
+          extract target class column\n    df_target_raw = df[target_class_label]
+          # from input parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))
+          # fit to data for target class to find all classes\n    target_class_label_names
+          = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\n    df_target_class_labels
+          = pd.DataFrame({''class'': target_class_label_names})\n    d_target_class_label_idx
+          = dict(zip(list(df_target_class_labels[''class'']), list(df_target_class_labels.index)))\n\n    l_target_column
+          = [d_target_class_label_idx[x] for x in df[target_class_label]]\n    df_target
+          = pd.DataFrame([])\n    df_target[target_class_label] = l_target_column#
+          1-column of multiple classes\n\n    # create dummies for every col except
+          class label col\n    df_features = df[[x for x in l_col_names if x != class_label_colname]]
+          # features are all colnames except target class\n\n    # exclude any other
+          colnames (other than target class column), if specified; \n    ## performed
+          on feature matrix after dummies are removed\n    if str(s_colnames_to_exclude)
+          != '''':\n        l_colnames_to_exclude = s_colnames_to_exclude.split('','')\n        l_colnames_in_this_df_to_exclude
+          = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features
+          = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n    df_features_dummies
+          = pd.get_dummies(df_features)\n\n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list
+          = pd.DataFrame({''feature'': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
+          index = False, header = True)\n    df_target.to_csv(output_csv_target, index
+          = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,
+          index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,
+          index = True, header = False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
+          dummies'', description=''Distribute categorical features into separate features.'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--class-label-colname\",
+          dest=\"class_label_colname\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--s-colnames-to-exclude\",
+          dest=\"s_colnames_to_exclude\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\",
+          dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\",
+          dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target-class-labels\",
+          dest=\"output_csv_target_class_labels\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-feature-list\",
+          dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = get_dummies(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          "A string containing path to input data.", "name": "file", "type": "CSV"},
+          {"name": "class_label_colname", "type": "String"}, {"name": "s_colnames_to_exclude",
+          "type": "String"}], "name": "Get dummies", "outputs": [{"name": "output_csv_features",
+          "type": "CSV"}, {"name": "output_csv_target", "type": "CSV"}, {"name": "output_csv_target_class_labels",
+          "type": "CSV"}, {"name": "output_csv_feature_list", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"class_label_colname": "{{inputs.parameters.user_input_class_label_column_name}}",
+          "s_colnames_to_exclude": "{{inputs.parameters.s_colnames_to_exclude}}"}'}
+  - name: impute-unknown
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def impute_unknown(file_path,
+                           output_csv):
+            """Impute unknown values (nan).
+                Input: CSV.
+                Output: CSV.
+
+            Args:
+                file_path: A string containing path to input data.
+                output_csv: A string containing path to processed data.
+            """
+            import numpy as np
+            import pandas as pd
+            from sklearn.impute import SimpleImputer
+
+            # Read in CSV
+            df = pd.read_csv(filepath_or_buffer=file_path)
+
+            # Impute: most common
+            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
+            imp_most_frequent.fit(df)
+            nparr_imputed = imp_most_frequent.transform(df)
+            df_imputed = pd.DataFrame(nparr_imputed)
+            df_imputed.columns = df.columns
+
+            # Output to CSV
+            df_imputed.to_csv(output_csv, index = False, header = True)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Impute unknown', description='Impute unknown values (nan).')
+        _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = impute_unknown(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: get-dummies-output_csv_features, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: impute-unknown-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Impute
+          unknown values (nan).", "implementation": {"container": {"args": ["--file",
+          {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef impute_unknown(file_path,\n                   output_csv):\n    \"\"\"Impute
+          unknown values (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:
+          A string containing path to input data.\n        output_csv: A string containing
+          path to processed data.\n    \"\"\"\n    import numpy as np\n    import
+          pandas as pd\n    from sklearn.impute import SimpleImputer\n\n    # Read
+          in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Impute:
+          most common\n    imp_most_frequent = SimpleImputer(missing_values=np.nan,
+          strategy=''most_frequent'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
+          = imp_most_frequent.transform(df)\n    df_imputed = pd.DataFrame(nparr_imputed)\n    df_imputed.columns
+          = df.columns\n\n    # Output to CSV\n    df_imputed.to_csv(output_csv, index
+          = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Impute
+          unknown'', description=''Impute unknown values (nan).'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = impute_unknown(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"description": "A string containing path to input data.", "name": "file",
+          "type": "CSV"}], "name": "Impute unknown", "outputs": [{"description": "A
+          string containing path to processed data.", "name": "output_csv", "type":
+          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: pl-gbm-v2-clinical-images
+    inputs:
+      parameters:
+      - {name: s_colnames_to_exclude}
+      - {name: test_set_size}
+      - {name: user_input_class_label_column_name}
+    dag:
+      tasks:
+      - name: create-model-inputs
+        template: create-model-inputs
+        dependencies: [get-dummies, scale-df]
+        arguments:
+          parameters:
+          - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
+          artifacts:
+          - {name: get-dummies-output_csv_target, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_target}}'}
+          - {name: scale-df-output_csv, from: '{{tasks.scale-df.outputs.artifacts.scale-df-output_csv}}'}
+      - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
+      - name: download-images
+        template: download-images
+        dependencies: [process-data-tarball]
+        arguments:
+          artifacts:
+          - {name: process-data-tarball-output_patient_id_list, from: '{{tasks.process-data-tarball.outputs.artifacts.process-data-tarball-output_patient_id_list}}'}
+      - name: get-dummies
+        template: get-dummies
+        dependencies: [process-data-tarball]
+        arguments:
+          parameters:
+          - {name: s_colnames_to_exclude, value: '{{inputs.parameters.s_colnames_to_exclude}}'}
+          - {name: user_input_class_label_column_name, value: '{{inputs.parameters.user_input_class_label_column_name}}'}
+          artifacts:
+          - {name: process-data-tarball-output_master_df, from: '{{tasks.process-data-tarball.outputs.artifacts.process-data-tarball-output_master_df}}'}
+      - name: impute-unknown
+        template: impute-unknown
+        dependencies: [get-dummies]
+        arguments:
+          artifacts:
+          - {name: get-dummies-output_csv_features, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_features}}'}
+      - name: process-data-tarball
+        template: process-data-tarball
+        dependencies: [download-data-kfp-sdk-v2]
+        arguments:
+          artifacts:
+          - {name: download-data-kfp-sdk-v2-Data, from: '{{tasks.download-data-kfp-sdk-v2.outputs.artifacts.download-data-kfp-sdk-v2-Data}}'}
+      - name: scale-df
+        template: scale-df
+        dependencies: [impute-unknown]
+        arguments:
+          artifacts:
+          - {name: impute-unknown-output_csv, from: '{{tasks.impute-unknown.outputs.artifacts.impute-unknown-output_csv}}'}
+      - name: test-model
+        template: test-model
+        dependencies: [create-model-inputs, train-model]
+        arguments:
+          artifacts:
+          - {name: create-model-inputs-output_X_test, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_X_test}}'}
+          - {name: create-model-inputs-output_y_test, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_y_test}}'}
+          - {name: train-model-output_model, from: '{{tasks.train-model.outputs.artifacts.train-model-output_model}}'}
+      - name: train-model
+        template: train-model
+        dependencies: [create-model-inputs]
+        arguments:
+          artifacts:
+          - {name: create-model-inputs-output_X_train, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_X_train}}'}
+          - {name: create-model-inputs-output_y_train, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_y_train}}'}
+  - name: process-data-tarball
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-patient-id-list, /tmp/outputs/output_patient_id_list/data,
+        --output-master-df, /tmp/outputs/output_master_df/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef process_data_tarball(file_path,\n                         output_patient_id_list,\n\
+        \                         output_master_df):\n    \"\"\"Specific data processing\
+        \ of tarball downloaded.\n        - Hard code tarball content names. \n  \
+        \      - Assume there is MANIFEST.txt\n        - Output: \n            - output_MANIFEST:\
+        \ MANIFEST.txt as df\n            - output_DATA: tables in dict (keys: name\
+        \ as in MANIFEST.txt, values: table)\n\n    Args:\n        file_path: A string\
+        \ containing path to the tarball.\n    \"\"\"\n    from functools import reduce\n\
+        \    import glob\n    import json \n    from json import JSONEncoder\n   \
+        \ import numpy as np\n    import tarfile\n\n    import pandas as pd\n\n  \
+        \  tarfile.open(name=file_path, mode=\"r|gz\").extractall('data_extracted')\n\
+        \    l_tarball_contents = tarfile.open(name=file_path, mode=\"r|gz\").getnames()\n\
+        \n    # all dataframes\n    d_df_data = {}\n\n    for name in l_tarball_contents:\n\
+        \        archive_filename = 'data_extracted/' + name\n        if name == 'MANIFEST.txt':\n\
+        \            df_manifest = pd.read_csv(glob.glob(archive_filename)[0], sep\
+        \ = \"\\t\")\n        else:\n            df = pd.read_csv(glob.glob(archive_filename)[0],\
+        \ sep = \"\\t\")\n            df.to_csv(index=False, header=True)\n      \
+        \      d_df_data[name] = df    \n\n    filename_patient_table = '57683e22-a8ea-4eca-bfcf-f708cf459546/nationwidechildrens.org_clinical_patient_gbm.txt'\n\
+        \    filename_follow_up_table = 'c9cdbc76-105d-429b-9fce-f000819716f9/nationwidechildrens.org_clinical_follow_up_v1.0_gbm.txt'\n\
+        \n    # 1 remove un-needed header rows for tables\n    df_patient_raw = d_df_data[filename_patient_table]\n\
+        \    df_follow_up_raw = d_df_data[filename_follow_up_table]\n\n    ## use\
+        \ the 2nd row as the column name (in raw data, first 3 rows are column labels)\n\
+        \    ### patient table\n    df_patient = df_patient_raw.drop([1])\n    df_patient\
+        \ = df_patient.tail(len(df_patient) -1 )\n    df_patient = df_patient.reset_index().drop(['index'],\
+        \ axis = 1)\n    ### follow_up table\n    df_follow_up = df_follow_up_raw.drop([1])\n\
+        \    df_follow_up = df_follow_up.tail(len(df_follow_up) -1 )\n    df_follow_up\
+        \ = df_follow_up.reset_index().drop(['index'], axis = 1)\n\n    # 2 data processing\n\
+        \    ## 2a: data processing: clnical data\n\n    ### patient table\n    missing_value_flags\
+        \ = ['[Not Available]',\n                       '[Discrepancy]',\n       \
+        \                '[Unknown]',\n                       '[Not Applicable]',\n\
+        \                       '[Not Evaluated]'\n                      ]\n    ####\
+        \ replace flags with np.nan\n    for flag in missing_value_flags:\n      \
+        \  df_patient = df_patient.replace(flag, np.nan)\n\n    #### drop un-needed\
+        \ columns - identifiers\n    df_patient = df_patient.drop(['bcr_patient_uuid',\
+        \ 'form_completion_date', 'patient_id'], axis=1)\n\n    #### parse numerical\
+        \ columns w/ dates\n    l_numerical_cols = [\n        'last_contact_days_to',\n\
+        \        'death_days_to',\n        'age_at_initial_pathologic_diagnosis'\n\
+        \    ]\n    for col in l_numerical_cols:\n        df_patient[col] = [float(x)\
+        \ for x in df_patient[col]]\n\n    df_patient['survival_time_yrs'] = np.abs(df_patient['death_days_to'])\
+        \ / 365\n    df_patient['days_since_last_contact'] = np.abs(df_patient['last_contact_days_to'])\
+        \ / 365\n\n    #### drop columns parsed / not needed anymore\n    l_columns_not_needed\
+        \ = [\n        'last_contact_days_to',\n        'birth_days_to',\n       \
+        \ 'death_days_to',\n\n        # uninformative cols (all missing/not evaluated\
+        \ etc):\n        'anatomic_neoplasm_subdivision',\n        'disease_code',\n\
+        \        'project_code',\n        'days_to_initial_pathologic_diagnosis',\n\
+        \        'icd_10',\n        'icd_o_3_histology',\n        'icd_o_3_site',\n\
+        \        'informed_consent_verified',\n        'initial_pathologic_dx_year'\n\
+        \n    ]\n    df_patient = df_patient.drop(l_columns_not_needed, axis = 1)\n\
+        \n    ### follow_up table\n    #### replace missing value flags with np.nan\n\
+        \    missing_value_flags = ['[Not Available]',\n                         \
+        \  '[Discrepancy]',\n                           '[Unknown]',\n           \
+        \                '[Not Applicable]',\n                           '[Not Evaluated]'\n\
+        \                          ]\n    for flag in missing_value_flags:\n     \
+        \   df_follow_up = df_follow_up.replace(flag, np.nan)\n\n    #### drop un-needed\
+        \ columns - identifiers\n    df_follow_up = df_follow_up.drop(['bcr_patient_uuid',\
+        \ 'bcr_followup_uuid', 'form_completion_date',\n                         \
+        \            'followup_reason', 'followup_lost_to'], axis=1)\n\n    #### parse\
+        \ numerical columns w/ dates\n    l_numerical_cols = [\n        'last_contact_days_to',\n\
+        \        'death_days_to'\n    ]\n    for col in l_numerical_cols:\n      \
+        \  df_follow_up[col] = [float(x) for x in df_follow_up[col]]\n\n    #### isolate\
+        \ the LAST followup (sorted by barcode) --> get one row per patient\n    df_follow_up\
+        \ = df_follow_up.groupby(['bcr_patient_barcode']).tail(1)\n\n    #### drop\
+        \ columns parsed / not needed anymore\n    l_columns_not_needed = [\n    \
+        \    'last_contact_days_to',\n        'death_days_to',\n        'bcr_followup_barcode'\n\
+        \    ]\n    df_follow_up = df_follow_up.drop(l_columns_not_needed, axis =\
+        \ 1)\n\n    # 3 Merge tables by patient identifier (create master table)\n\
+        \n    ## merge patient and followup table\n    ### find common cols: \n  \
+        \  l_cols_table_1 = set(df_patient.columns)\n    l_cols_table_2 = set(df_follow_up.columns)\n\
+        \    intersect_cols = l_cols_table_1.intersection(l_cols_table_2)\n    l_cols_to_remove_table_1\
+        \ = [x for x in intersect_cols if x != 'bcr_patient_barcode']\n\n    ### drop\
+        \ common cols from left table (`patient`) before join\n    df_patient = df_patient.drop(l_cols_to_remove_table_1,\
+        \ axis = 1)\n    ### join\n    df_master = df_patient.merge(df_follow_up,\
+        \ \n                                 left_on = 'bcr_patient_barcode', \n \
+        \                                right_on = 'bcr_patient_barcode', \n    \
+        \                             how = 'inner')\n    ### drop patient ID identifier\
+        \ from master table (used as identifier, not treated as a feature)\n    df_patient_id_list\
+        \ = df_master[['bcr_patient_barcode']]\n    df_master = df_master.drop(['bcr_patient_barcode'],\
+        \ axis = 1)    \n\n    # pl output\n    df_patient_id_list.to_csv(output_patient_id_list,\
+        \ index=False, header=True)\n    df_master.to_csv(output_master_df, index=False,\
+        \ header=True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Process\
+        \ data tarball', description='Specific data processing of tarball downloaded.')\n\
+        _parser.add_argument(\"--file\", dest=\"file_path\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-patient-id-list\"\
+        , dest=\"output_patient_id_list\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-master-df\"\
+        , dest=\"output_master_df\", type=_make_parent_dirs_and_return_path, required=True,\
+        \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
+        _outputs = process_data_tarball(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: download-data-kfp-sdk-v2-Data, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: process-data-tarball-output_master_df, path: /tmp/outputs/output_master_df/data}
+      - {name: process-data-tarball-output_patient_id_list, path: /tmp/outputs/output_patient_id_list/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Specific
+          data processing of tarball downloaded.", "implementation": {"container":
+          {"args": ["--file", {"inputPath": "file"}, "--output-patient-id-list", {"outputPath":
+          "output_patient_id_list"}, "--output-master-df", {"outputPath": "output_master_df"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef process_data_tarball(file_path,\n                         output_patient_id_list,\n                         output_master_df):\n    \"\"\"Specific
+          data processing of tarball downloaded.\n        - Hard code tarball content
+          names. \n        - Assume there is MANIFEST.txt\n        - Output: \n            -
+          output_MANIFEST: MANIFEST.txt as df\n            - output_DATA: tables in
+          dict (keys: name as in MANIFEST.txt, values: table)\n\n    Args:\n        file_path:
+          A string containing path to the tarball.\n    \"\"\"\n    from functools
+          import reduce\n    import glob\n    import json \n    from json import JSONEncoder\n    import
+          numpy as np\n    import tarfile\n\n    import pandas as pd\n\n    tarfile.open(name=file_path,
+          mode=\"r|gz\").extractall(''data_extracted'')\n    l_tarball_contents =
+          tarfile.open(name=file_path, mode=\"r|gz\").getnames()\n\n    # all dataframes\n    d_df_data
+          = {}\n\n    for name in l_tarball_contents:\n        archive_filename =
+          ''data_extracted/'' + name\n        if name == ''MANIFEST.txt'':\n            df_manifest
+          = pd.read_csv(glob.glob(archive_filename)[0], sep = \"\\t\")\n        else:\n            df
+          = pd.read_csv(glob.glob(archive_filename)[0], sep = \"\\t\")\n            df.to_csv(index=False,
+          header=True)\n            d_df_data[name] = df    \n\n    filename_patient_table
+          = ''57683e22-a8ea-4eca-bfcf-f708cf459546/nationwidechildrens.org_clinical_patient_gbm.txt''\n    filename_follow_up_table
+          = ''c9cdbc76-105d-429b-9fce-f000819716f9/nationwidechildrens.org_clinical_follow_up_v1.0_gbm.txt''\n\n    #
+          1 remove un-needed header rows for tables\n    df_patient_raw = d_df_data[filename_patient_table]\n    df_follow_up_raw
+          = d_df_data[filename_follow_up_table]\n\n    ## use the 2nd row as the column
+          name (in raw data, first 3 rows are column labels)\n    ### patient table\n    df_patient
+          = df_patient_raw.drop([1])\n    df_patient = df_patient.tail(len(df_patient)
+          -1 )\n    df_patient = df_patient.reset_index().drop([''index''], axis =
+          1)\n    ### follow_up table\n    df_follow_up = df_follow_up_raw.drop([1])\n    df_follow_up
+          = df_follow_up.tail(len(df_follow_up) -1 )\n    df_follow_up = df_follow_up.reset_index().drop([''index''],
+          axis = 1)\n\n    # 2 data processing\n    ## 2a: data processing: clnical
+          data\n\n    ### patient table\n    missing_value_flags = [''[Not Available]'',\n                       ''[Discrepancy]'',\n                       ''[Unknown]'',\n                       ''[Not
+          Applicable]'',\n                       ''[Not Evaluated]''\n                      ]\n    ####
+          replace flags with np.nan\n    for flag in missing_value_flags:\n        df_patient
+          = df_patient.replace(flag, np.nan)\n\n    #### drop un-needed columns -
+          identifiers\n    df_patient = df_patient.drop([''bcr_patient_uuid'', ''form_completion_date'',
+          ''patient_id''], axis=1)\n\n    #### parse numerical columns w/ dates\n    l_numerical_cols
+          = [\n        ''last_contact_days_to'',\n        ''death_days_to'',\n        ''age_at_initial_pathologic_diagnosis''\n    ]\n    for
+          col in l_numerical_cols:\n        df_patient[col] = [float(x) for x in df_patient[col]]\n\n    df_patient[''survival_time_yrs'']
+          = np.abs(df_patient[''death_days_to'']) / 365\n    df_patient[''days_since_last_contact'']
+          = np.abs(df_patient[''last_contact_days_to'']) / 365\n\n    #### drop columns
+          parsed / not needed anymore\n    l_columns_not_needed = [\n        ''last_contact_days_to'',\n        ''birth_days_to'',\n        ''death_days_to'',\n\n        #
+          uninformative cols (all missing/not evaluated etc):\n        ''anatomic_neoplasm_subdivision'',\n        ''disease_code'',\n        ''project_code'',\n        ''days_to_initial_pathologic_diagnosis'',\n        ''icd_10'',\n        ''icd_o_3_histology'',\n        ''icd_o_3_site'',\n        ''informed_consent_verified'',\n        ''initial_pathologic_dx_year''\n\n    ]\n    df_patient
+          = df_patient.drop(l_columns_not_needed, axis = 1)\n\n    ### follow_up table\n    ####
+          replace missing value flags with np.nan\n    missing_value_flags = [''[Not
+          Available]'',\n                           ''[Discrepancy]'',\n                           ''[Unknown]'',\n                           ''[Not
+          Applicable]'',\n                           ''[Not Evaluated]''\n                          ]\n    for
+          flag in missing_value_flags:\n        df_follow_up = df_follow_up.replace(flag,
+          np.nan)\n\n    #### drop un-needed columns - identifiers\n    df_follow_up
+          = df_follow_up.drop([''bcr_patient_uuid'', ''bcr_followup_uuid'', ''form_completion_date'',\n                                     ''followup_reason'',
+          ''followup_lost_to''], axis=1)\n\n    #### parse numerical columns w/ dates\n    l_numerical_cols
+          = [\n        ''last_contact_days_to'',\n        ''death_days_to''\n    ]\n    for
+          col in l_numerical_cols:\n        df_follow_up[col] = [float(x) for x in
+          df_follow_up[col]]\n\n    #### isolate the LAST followup (sorted by barcode)
+          --> get one row per patient\n    df_follow_up = df_follow_up.groupby([''bcr_patient_barcode'']).tail(1)\n\n    ####
+          drop columns parsed / not needed anymore\n    l_columns_not_needed = [\n        ''last_contact_days_to'',\n        ''death_days_to'',\n        ''bcr_followup_barcode''\n    ]\n    df_follow_up
+          = df_follow_up.drop(l_columns_not_needed, axis = 1)\n\n    # 3 Merge tables
+          by patient identifier (create master table)\n\n    ## merge patient and
+          followup table\n    ### find common cols: \n    l_cols_table_1 = set(df_patient.columns)\n    l_cols_table_2
+          = set(df_follow_up.columns)\n    intersect_cols = l_cols_table_1.intersection(l_cols_table_2)\n    l_cols_to_remove_table_1
+          = [x for x in intersect_cols if x != ''bcr_patient_barcode'']\n\n    ###
+          drop common cols from left table (`patient`) before join\n    df_patient
+          = df_patient.drop(l_cols_to_remove_table_1, axis = 1)\n    ### join\n    df_master
+          = df_patient.merge(df_follow_up, \n                                 left_on
+          = ''bcr_patient_barcode'', \n                                 right_on =
+          ''bcr_patient_barcode'', \n                                 how = ''inner'')\n    ###
+          drop patient ID identifier from master table (used as identifier, not treated
+          as a feature)\n    df_patient_id_list = df_master[[''bcr_patient_barcode'']]\n    df_master
+          = df_master.drop([''bcr_patient_barcode''], axis = 1)    \n\n    # pl output\n    df_patient_id_list.to_csv(output_patient_id_list,
+          index=False, header=True)\n    df_master.to_csv(output_master_df, index=False,
+          header=True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Process
+          data tarball'', description=''Specific data processing of tarball downloaded.'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-patient-id-list\",
+          dest=\"output_patient_id_list\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-master-df\",
+          dest=\"output_master_df\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = process_data_tarball(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          [{"description": "A string containing path to the tarball.", "name": "file",
+          "type": "Tarball"}], "name": "Process data tarball", "outputs": [{"name":
+          "output_patient_id_list", "type": "CSV"}, {"name": "output_master_df", "type":
+          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: scale-df
+    container:
+      args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def _make_parent_dirs_and_return_path(file_path: str):
+            import os
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            return file_path
+
+        def scale_df(file_path,
+                     output_csv):
+            """Impute unknown values (nan).
+                Input: CSV.
+                Output: CSV.
+
+            Args:
+                file_path: A string containing path to input data.
+                output_csv: A string containing path to processed data.
+            """
+            import pandas as pd
+            from sklearn.preprocessing import StandardScaler
+
+            # Read in CSV
+            df = pd.read_csv(filepath_or_buffer=file_path)
+
+            # scaler
+            scaler = StandardScaler()
+            scaler.fit(df)
+            nparr_scaled_data = scaler.transform(df)
+
+            df_scaled = pd.DataFrame(nparr_scaled_data)
+            df_scaled.columns = df.columns
+
+            # Output to CSV
+            df_scaled.to_csv(output_csv, index = False, header = True)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Scale df', description='Impute unknown values (nan).')
+        _parser.add_argument("--file", dest="file_path", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--output-csv", dest="output_csv", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
+        _parsed_args = vars(_parser.parse_args())
+
+        _outputs = scale_df(**_parsed_args)
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: impute-unknown-output_csv, path: /tmp/inputs/file/data}
+    outputs:
+      artifacts:
+      - {name: scale-df-output_csv, path: /tmp/outputs/output_csv/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Impute
+          unknown values (nan).", "implementation": {"container": {"args": ["--file",
+          {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef scale_df(file_path,\n             output_csv):\n    \"\"\"Impute
+          unknown values (nan).\n        Input: CSV.\n        Output: CSV.\n\n    Args:\n        file_path:
+          A string containing path to input data.\n        output_csv: A string containing
+          path to processed data.\n    \"\"\"\n    import pandas as pd\n    from sklearn.preprocessing
+          import StandardScaler\n\n    # Read in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    #
+          scaler\n    scaler = StandardScaler()\n    scaler.fit(df)\n    nparr_scaled_data
+          = scaler.transform(df)\n\n    df_scaled = pd.DataFrame(nparr_scaled_data)\n    df_scaled.columns
+          = df.columns\n\n    # Output to CSV\n    df_scaled.to_csv(output_csv, index
+          = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Scale
+          df'', description=''Impute unknown values (nan).'')\n_parser.add_argument(\"--file\",
+          dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
+          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = scale_df(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          "A string containing path to input data.", "name": "file", "type": "CSV"}],
+          "name": "Scale df", "outputs": [{"description": "A string containing path
+          to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: test-model
+    container:
+      args: [--file-path-x-test, /tmp/inputs/file_path_x_test/data, --file-path-y-test,
+        /tmp/inputs/file_path_y_test/data, --file-path-model, /tmp/inputs/file_path_model/data,
+        --output-json, /tmp/outputs/output_json/data, --output-csv, /tmp/outputs/output_csv/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
+        && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef test_model(file_path_x_test,\n               file_path_y_test,\n   \
+        \            file_path_model,\n               output_json,\n             \
+        \  output_csv):\n    import joblib\n    import json\n    import mlflow.sklearn\n\
+        \    import numpy as np\n    import pandas as pd\n    from sklearn.linear_model\
+        \ import LogisticRegression\n    from sklearn.metrics import accuracy_score\n\
+        \    from sklearn.metrics import confusion_matrix\n    from sklearn.metrics\
+        \ import roc_auc_score\n    from sklearn.preprocessing import LabelBinarizer\n\
+        \n    class NumpyArrayEncoder(json.JSONEncoder):\n        def default(self,\
+        \ obj):\n            if isinstance(obj, np.ndarray):\n                return\
+        \ obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n\
+        \    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    X_test\
+        \ = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n\
+        \n    # Get predictions \n    y_pred = trained_model.predict(X_test)\n\n \
+        \   #############################################################\n\n    #\
+        \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion\
+        \ matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #\
+        \ AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
+        \ = np.where(sum_y_test_axis_0 > 0)[0]\n\n    # compute AUC \n\n    ## check\
+        \ if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n\
+        \    if num_classes > 2: # one-hot encode\n        lb = LabelBinarizer()\n\
+        \        lb.fit(np.concatenate((np.array(y_test).ravel(), np.array(y_pred).ravel())))\n\
+        \        y_test_onehot = lb.fit_transform(y_test)\n        y_pred_onehot =\
+        \ lb.fit_transform(y_pred)\n    else:\n        y_test_onehot = y_test\n  \
+        \      y_pred_onehot = y_pred\n\n    auc_test = roc_auc_score(y_test_onehot,\n\
+        \                             y_pred_onehot,\n                           \
+        \  multi_class=trained_model.multi_class) # specify multi-class method\n\n\
+        \    # output: JSON\n    d_output = {}\n    ## add in model results\n    d_output['model_results']\
+        \ = {}\n    d_output['model_results']['model'] = trained_model.get_params()\n\
+        \    d_output['model_results']['y_test'] = np.array(y_test).ravel()\n    d_output['model_results']['y_pred']\
+        \ = y_pred\n    d_output['model_results']['accuracy'] = accuracy\n    d_output['model_results']['auc_test']\
+        \ = auc_test\n    d_output['model_results']['cm'] = cm\n\n    json_string_output\
+        \ = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ## write json output:\
+        \ results\n    with open(output_json, 'w') as outfile:\n        outfile.write(json_string_output)\n\
+        \n    ## write csv output: results\n    df_output_csv = pd.DataFrame({'metric':\
+        \ d_output['model_results'].keys(),\n                                  'value':\
+        \  d_output['model_results'].values()})\n    df_output_csv.to_csv(output_csv,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Test\
+        \ model', description='')\n_parser.add_argument(\"--file-path-x-test\", dest=\"\
+        file_path_x_test\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--file-path-y-test\", dest=\"file_path_y_test\", type=str,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\"\
+        , dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\"\
+        , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
+        \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
+        _outputs = test_model(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: train-model-output_model, path: /tmp/inputs/file_path_model/data}
+      - {name: create-model-inputs-output_X_test, path: /tmp/inputs/file_path_x_test/data}
+      - {name: create-model-inputs-output_y_test, path: /tmp/inputs/file_path_y_test/data}
+    outputs:
+      artifacts:
+      - {name: test-model-output_csv, path: /tmp/outputs/output_csv/data}
+      - {name: test-model-output_json, path: /tmp/outputs/output_json/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
+          {"args": ["--file-path-x-test", {"inputPath": "file_path_x_test"}, "--file-path-y-test",
+          {"inputPath": "file_path_y_test"}, "--file-path-model", {"inputPath": "file_path_model"},
+          "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
+          "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
+          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
+          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
+          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
+          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
+          np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
+          sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
+          sklearn.metrics import roc_auc_score\n    from sklearn.preprocessing import
+          LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n        def
+          default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
+          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    trained_model
+          = mlflow.sklearn.load_model(file_path_model)\n\n    X_test = pd.read_csv(file_path_x_test)\n    y_test
+          = np.array(pd.read_csv(file_path_y_test))\n\n    # Get predictions \n    y_pred
+          = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
+          Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion
+          matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #
+          AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
+          = np.where(sum_y_test_axis_0 > 0)[0]\n\n    # compute AUC \n\n    ## check
+          if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n    if
+          num_classes > 2: # one-hot encode\n        lb = LabelBinarizer()\n        lb.fit(np.concatenate((np.array(y_test).ravel(),
+          np.array(y_pred).ravel())))\n        y_test_onehot = lb.fit_transform(y_test)\n        y_pred_onehot
+          = lb.fit_transform(y_pred)\n    else:\n        y_test_onehot = y_test\n        y_pred_onehot
+          = y_pred\n\n    auc_test = roc_auc_score(y_test_onehot,\n                             y_pred_onehot,\n                             multi_class=trained_model.multi_class)
+          # specify multi-class method\n\n    # output: JSON\n    d_output = {}\n    ##
+          add in model results\n    d_output[''model_results''] = {}\n    d_output[''model_results''][''model'']
+          = trained_model.get_params()\n    d_output[''model_results''][''y_test'']
+          = np.array(y_test).ravel()\n    d_output[''model_results''][''y_pred'']
+          = y_pred\n    d_output[''model_results''][''accuracy''] = accuracy\n    d_output[''model_results''][''auc_test'']
+          = auc_test\n    d_output[''model_results''][''cm''] = cm\n\n    json_string_output
+          = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ## write json output:
+          results\n    with open(output_json, ''w'') as outfile:\n        outfile.write(json_string_output)\n\n    ##
+          write csv output: results\n    df_output_csv = pd.DataFrame({''metric'':
+          d_output[''model_results''].keys(),\n                                  ''value'':  d_output[''model_results''].values()})\n    df_output_csv.to_csv(output_csv,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Test
+          model'', description='''')\n_parser.add_argument(\"--file-path-x-test\",
+          dest=\"file_path_x_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-test\",
+          dest=\"file_path_y_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\",
+          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
+          dest=\"output_json\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
+          type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
+          = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
+          "image": "python:3.7"}}, "inputs": [{"name": "file_path_x_test", "type":
+          "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
+          "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
+          "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  - name: train-model
+    container:
+      args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
+        /tmp/inputs/file_path_y_train/data, --output-model, /tmp/outputs/output_model/data]
+      command:
+      - sh
+      - -c
+      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
+        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
+        && "$0" "$@"
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
+        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+        \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
+        \                output_model):\n    import joblib\n    import mlflow.sklearn\n\
+        \    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn import preprocessing\n\n    X_train = pd.read_csv(file_path_x_train)\n\
+        \    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb = preprocessing.LabelBinarizer()\n\
+        #     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels = lb.classes_\
+        \ #\n#     print('y_class_labels: ', y_class_labels) #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))\
+        \    \n\n    y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n\
+        \                               penalty='l2',\n                          \
+        \     tol=1e-4,\n                               C=1.0,\n                 \
+        \              class_weight='balanced',\n                               solver='lbfgs',\n\
+        \                               multi_class='ovr')\n    model.fit(X_train,\
+        \ y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n       \
+        \                   serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
+        )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
+        \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\", dest=\"\
+        output_model\", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parsed_args = vars(_parser.parse_args())\n\n_outputs = train_model(**_parsed_args)\n"
+      image: python:3.7
+    inputs:
+      artifacts:
+      - {name: create-model-inputs-output_X_train, path: /tmp/inputs/file_path_x_train/data}
+      - {name: create-model-inputs-output_y_train, path: /tmp/inputs/file_path_y_train/data}
+    outputs:
+      artifacts:
+      - {name: train-model-output_model, path: /tmp/outputs/output_model/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
+          {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
+          {"inputPath": "file_path_y_train"}, "--output-model", {"outputPath": "output_model"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow==1.24.0''
+          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
+          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
+          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
+          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                output_model):\n    import
+          joblib\n    import mlflow.sklearn\n    import pandas as pd\n    from sklearn.linear_model
+          import LogisticRegression\n    from sklearn import preprocessing\n\n    X_train
+          = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
+          = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
+          = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
+          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    model
+          = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train,
+          y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
+          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
+          argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
+          dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
+          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
+          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          = train_model(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"name":
+          "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
+          "CSV"}], "name": "Train model", "outputs": [{"name": "output_model", "type":
+          "Model"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+  arguments:
+    parameters:
+    - {name: user_input_class_label_column_name}
+    - {name: s_colnames_to_exclude}
+    - {name: test_set_size}
+  serviceAccountName: pipeline-runner
