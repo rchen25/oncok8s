@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-04-webdl-dp-train-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T13:10:12.393306',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T13:48:07.563952',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -243,13 +243,14 @@ spec:
         \n    # create dummies for every col except class label col\n    df_features\
         \ = df[[x for x in l_col_names if x != class_label_colname]] # features are\
         \ all colnames except target class\n\n    # exclude any other colnames (other\
-        \ than target class column), if specified\n    if str(s_colnames_to_exclude)\
-        \ != '':\n        l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n\
-        \        l_colnames_in_this_df_to_exclude = [x for x in l_colnames_to_exclude\
-        \ if x in df.columns]\n        df.drop(l_colnames_to_exclude, axis = 1)\n\n\
-        \    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\
-        \n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list\
-        \ = pd.DataFrame({'feature': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
+        \ than target class column), if specified; \n    ## performed on feature matrix\
+        \ after dummies are removed\n    if str(s_colnames_to_exclude) != '':\n  \
+        \      l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n        l_colnames_in_this_df_to_exclude\
+        \ = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features\
+        \ = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n\
+        \    df_features_dummies = pd.get_dummies(df_features)\n\n    # feature list\n\
+        \    l_features = df_features_dummies.columns\n    df_feature_list = pd.DataFrame({'feature':\
+        \ l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
         \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
         \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
         \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
@@ -323,11 +324,12 @@ spec:
           1-column of multiple classes\n\n    # create dummies for every col except
           class label col\n    df_features = df[[x for x in l_col_names if x != class_label_colname]]
           # features are all colnames except target class\n\n    # exclude any other
-          colnames (other than target class column), if specified\n    if str(s_colnames_to_exclude)
+          colnames (other than target class column), if specified; \n    ## performed
+          on feature matrix after dummies are removed\n    if str(s_colnames_to_exclude)
           != '''':\n        l_colnames_to_exclude = s_colnames_to_exclude.split('','')\n        l_colnames_in_this_df_to_exclude
-          = [x for x in l_colnames_to_exclude if x in df.columns]\n        df.drop(l_colnames_to_exclude,
-          axis = 1)\n\n    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\n    #
-          feature list\n    l_features = df_features_dummies.columns\n    df_feature_list
+          = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features
+          = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n    df_features_dummies
+          = pd.get_dummies(df_features)\n\n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list
           = pd.DataFrame({''feature'': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
           index = False, header = True)\n    df_target.to_csv(output_csv_target, index
           = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,
