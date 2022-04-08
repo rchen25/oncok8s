@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-04-webdl-dp-train-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T11:24:34.548091',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T11:27:59.833796',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -840,7 +840,7 @@ spec:
         \ obj):\n            if isinstance(obj, np.ndarray):\n                return\
         \ obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n\
         \    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    X_test\
-        \ = pd.read_csv(file_path_x_test)\n    y_test = pd.read_csv(file_path_y_test)\n\
+        \ = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n\
         \n    # Get predictions \n    y_pred = trained_model.predict(X_test)\n\n \
         \   #############################################################\n\n    #\
         \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion\
@@ -851,7 +851,8 @@ spec:
         \    if num_classes > 2: # one-hot encode\n        lb = LabelBinarizer()\n\
         \        lb.fit(np.concatenate((np.array(y_test).ravel(), np.array(y_pred).ravel())))\n\
         \        y_test_onehot = lb.fit_transform(y_test)\n        y_pred_onehot =\
-        \ lb.fit_transform(y_pred)\n\n    auc_test = roc_auc_score(y_test_onehot,\n\
+        \ lb.fit_transform(y_pred)\n    else:\n        y_test_onehot = y_test\n  \
+        \      y_pred_onehot = y_pred\n\n    auc_test = roc_auc_score(y_test_onehot,\n\
         \                             y_pred_onehot,\n                           \
         \  multi_class=trained_model.multi_class) # specify multi-class method\n\n\
         \    # output: JSON\n    d_output = {}\n    ## add in model results\n    d_output['model_results']\
@@ -911,8 +912,8 @@ spec:
           default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
           obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    trained_model
           = mlflow.sklearn.load_model(file_path_model)\n\n    X_test = pd.read_csv(file_path_x_test)\n    y_test
-          = pd.read_csv(file_path_y_test)\n\n    # Get predictions \n    y_pred =
-          trained_model.predict(X_test)\n\n    #############################################################\n\n    #
+          = np.array(pd.read_csv(file_path_y_test))\n\n    # Get predictions \n    y_pred
+          = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #
           AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -920,7 +921,8 @@ spec:
           if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n    if
           num_classes > 2: # one-hot encode\n        lb = LabelBinarizer()\n        lb.fit(np.concatenate((np.array(y_test).ravel(),
           np.array(y_pred).ravel())))\n        y_test_onehot = lb.fit_transform(y_test)\n        y_pred_onehot
-          = lb.fit_transform(y_pred)\n\n    auc_test = roc_auc_score(y_test_onehot,\n                             y_pred_onehot,\n                             multi_class=trained_model.multi_class)
+          = lb.fit_transform(y_pred)\n    else:\n        y_test_onehot = y_test\n        y_pred_onehot
+          = y_pred\n\n    auc_test = roc_auc_score(y_test_onehot,\n                             y_pred_onehot,\n                             multi_class=trained_model.multi_class)
           # specify multi-class method\n\n    # output: JSON\n    d_output = {}\n    ##
           add in model results\n    d_output[''model_results''] = {}\n    d_output[''model_results''][''model'']
           = trained_model.get_params()\n    d_output[''model_results''][''y_test'']
