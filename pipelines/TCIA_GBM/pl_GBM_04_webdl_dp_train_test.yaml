@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-04-webdl-dp-train-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T11:27:59.833796',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T13:10:12.393306',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -857,7 +857,7 @@ spec:
         \  multi_class=trained_model.multi_class) # specify multi-class method\n\n\
         \    # output: JSON\n    d_output = {}\n    ## add in model results\n    d_output['model_results']\
         \ = {}\n    d_output['model_results']['model'] = trained_model.get_params()\n\
-        \    d_output['model_results']['y_test'] = np.array(y_test)\n    d_output['model_results']['y_pred']\
+        \    d_output['model_results']['y_test'] = np.array(y_test).ravel()\n    d_output['model_results']['y_pred']\
         \ = y_pred\n    d_output['model_results']['accuracy'] = accuracy\n    d_output['model_results']['auc_test']\
         \ = auc_test\n    d_output['model_results']['cm'] = cm\n\n    json_string_output\
         \ = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ## write json output:\
@@ -926,10 +926,11 @@ spec:
           # specify multi-class method\n\n    # output: JSON\n    d_output = {}\n    ##
           add in model results\n    d_output[''model_results''] = {}\n    d_output[''model_results''][''model'']
           = trained_model.get_params()\n    d_output[''model_results''][''y_test'']
-          = np.array(y_test)\n    d_output[''model_results''][''y_pred''] = y_pred\n    d_output[''model_results''][''accuracy'']
-          = accuracy\n    d_output[''model_results''][''auc_test''] = auc_test\n    d_output[''model_results''][''cm'']
-          = cm\n\n    json_string_output = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ##
-          write json output: results\n    with open(output_json, ''w'') as outfile:\n        outfile.write(json_string_output)\n\n    ##
+          = np.array(y_test).ravel()\n    d_output[''model_results''][''y_pred'']
+          = y_pred\n    d_output[''model_results''][''accuracy''] = accuracy\n    d_output[''model_results''][''auc_test'']
+          = auc_test\n    d_output[''model_results''][''cm''] = cm\n\n    json_string_output
+          = json.dumps(d_output, cls=NumpyArrayEncoder)\n\n    ## write json output:
+          results\n    with open(output_json, ''w'') as outfile:\n        outfile.write(json_string_output)\n\n    ##
           write csv output: results\n    df_output_csv = pd.DataFrame({''metric'':
           d_output[''model_results''].keys(),\n                                  ''value'':  d_output[''model_results''].values()})\n    df_output_csv.to_csv(output_csv,
           index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Test
