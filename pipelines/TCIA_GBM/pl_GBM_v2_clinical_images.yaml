@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v2-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-08T14:45:39.944130',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-20T00:04:28.063262',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -196,14 +196,16 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
   - name: download-images
     container:
-      args: [--file-path-patient-list, /tmp/inputs/file_path_patient_list/data, --output-csv,
-        /tmp/outputs/output_csv/data]
+      args: [--file-path-patient-list, /tmp/inputs/file_path_patient_list/data, --outfile-images-json,
+        /tmp/outputs/outfile_images_json/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'girder_client==3.1.8' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
         'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+        --quiet --no-warn-script-location 'girder_client==3.1.8' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
+        'pandas==1.1.4' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -212,17 +214,44 @@ spec:
         python3 -u "$program_path" "$@"
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-        \ndef download_images(file_path_patient_list,\n                    output_csv):\n\
+        \ndef download_images(file_path_patient_list,\n                    outfile_images_json):\n\
         \    \"\"\"Acquisition of images associated with patients listed\n       \
         \ in master `patient` table. \n\n    Args:\n        file_path: A string containing\
-        \ path to the tarball.\n    \"\"\"\n    import pandas as pd\n\n    from functools\
-        \ import reduce\n    import glob\n    import json \n    from json import JSONEncoder\n\
-        \    import numpy as np\n    import tarfile\n\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\
-        \n    df_patient_list.to_csv(output_csv)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Download\
+        \ path to the tarball.\n    \"\"\"\n    import json \n    from json import\
+        \ JSONEncoder\n    import cv2\n    import girder_client\n    import numpy\
+        \ as np\n    import pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n\
+        \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
+        \                return obj.tolist()\n            return JSONEncoder.default(self,\
+        \ obj)\n\n    gc = girder_client.GirderClient(apiUrl=\"https://api.digitalslidearchive.org/api/v1\"\
+        )\n\n    # list of patients; header col name = \"bcr_patient_barcode\"\n \
+        \   df_patient_list = pd.read_csv(file_path_patient_list)\n\n    ## FYI: image\
+        \ name format:\n    ##    <patient_id>-01Z-00-DX1.<string>.svs\n    ##   \
+        \ TCGA-02-0038-01Z-00-DX1.5E369837-371E-4845-AD78-84BB48E1A082.svs\n\n   \
+        \ # retrieve images by ptID in list\n    l_imagelist_ptID = []\n    l_imagelist_imgID\
+        \ = []\n    l_imagelist_imgContent = []\n    for ptID in df_patient_list['bcr_patient_barcode']:\n\
+        \n        # get case metadata for this patient\n        caseMetadata = gc.get('tcga/case/label/%s'\
+        \ % ptID)\n        # get caseId for this patient\n        caseId =  caseMetadata['tcga']['caseId']\n\
+        \n        # Get images for this case ID..\n        imageData = gc.get(\"/tcga/case/%s/images\"\
+        \ % caseId)\n\n        for i in imageData['data']:\n            if i['name'].split('.')[0].split('-')[-1]\
+        \ == 'DX1':\n                print(i['name'],i['_id'])\n                l_imagelist_ptID.append(ptID)\n\
+        \                l_imagelist_imgID.append(i['_id'])\n\n    for i in range(len(l_imagelist_imgID)):\n\
+        \        # retrieve image content with image ID\n        imgID = l_imagelist_imgID[i]\n\
+        \        imageThumb = gc.get(\"item/%s/tiles/thumbnail\" % imgID,jsonResp=False)\n\
+        \        img_array = np.frombuffer(imageThumb.content, dtype=np.uint8)\n \
+        \       img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)\n        l_imagelist_imgContent.append(img)\n\
+        \n    # image shape\n    img_shape = l_imagelist_imgContent[0].shape # assume\
+        \ all images are same shape\n    df_img_shape = pd.DataFrame([])\n    df_img_shape['img_shape']\
+        \ = img_shape\n\n    # JSON of all images\n    d_images = dict()\n    for\
+        \ i in range(len(l_imagelist_ptID)):\n        ptID = l_imagelist_ptID[i]\n\
+        \        if ptID not in d_images:\n            d_images[ptID] = []\n     \
+        \   d_images[ptID].append(l_imagelist_imgContent[i])\n    json_string_output\
+        \ = json.dumps(d_images, cls=NumpyArrayEncoder)\n\n    # write outputs\n \
+        \   ## write json file\n    with open(outfile_images_json, 'w') as outfile:\n\
+        \        outfile.write(json_string_output)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Download\
         \ images', description='Acquisition of images associated with patients listed')\n\
         _parser.add_argument(\"--file-path-patient-list\", dest=\"file_path_patient_list\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --output-csv\", dest=\"output_csv\", type=_make_parent_dirs_and_return_path,\
+        --outfile-images-json\", dest=\"outfile_images_json\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = download_images(**_parsed_args)\n"
       image: python:3.7
@@ -231,7 +260,7 @@ spec:
       - {name: process-data-tarball-output_patient_id_list, path: /tmp/inputs/file_path_patient_list/data}
     outputs:
       artifacts:
-      - {name: download-images-output_csv, path: /tmp/outputs/output_csv/data}
+      - {name: download-images-outfile_images_json, path: /tmp/outputs/outfile_images_json/data}
     metadata:
       labels:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
@@ -240,26 +269,51 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Acquisition
           of images associated with patients listed", "implementation": {"container":
           {"args": ["--file-path-patient-list", {"inputPath": "file_path_patient_list"},
-          "--output-csv", {"outputPath": "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
-          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef download_images(file_path_patient_list,\n                    output_csv):\n    \"\"\"Acquisition
+          "--outfile-images-json", {"outputPath": "outfile_images_json"}], "command":
+          ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''girder_client==3.1.8'' ''numpy==1.21.2'' ''opencv-python-headless==4.5.5.62''
+          ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
+          --quiet --no-warn-script-location ''girder_client==3.1.8'' ''numpy==1.21.2''
+          ''opencv-python-headless==4.5.5.62'' ''pandas==1.1.4'' --user) && \"$0\"
+          \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef download_images(file_path_patient_list,\n                    outfile_images_json):\n    \"\"\"Acquisition
           of images associated with patients listed\n        in master `patient` table.
           \n\n    Args:\n        file_path: A string containing path to the tarball.\n    \"\"\"\n    import
-          pandas as pd\n\n    from functools import reduce\n    import glob\n    import
-          json \n    from json import JSONEncoder\n    import numpy as np\n    import
-          tarfile\n\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\n    df_patient_list.to_csv(output_csv)\n\nimport
+          json \n    from json import JSONEncoder\n    import cv2\n    import girder_client\n    import
+          numpy as np\n    import pandas as pd\n\n    class NumpyArrayEncoder(JSONEncoder):\n        def
+          default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
+          obj.tolist()\n            return JSONEncoder.default(self, obj)\n\n    gc
+          = girder_client.GirderClient(apiUrl=\"https://api.digitalslidearchive.org/api/v1\")\n\n    #
+          list of patients; header col name = \"bcr_patient_barcode\"\n    df_patient_list
+          = pd.read_csv(file_path_patient_list)\n\n    ## FYI: image name format:\n    ##    <patient_id>-01Z-00-DX1.<string>.svs\n    ##    TCGA-02-0038-01Z-00-DX1.5E369837-371E-4845-AD78-84BB48E1A082.svs\n\n    #
+          retrieve images by ptID in list\n    l_imagelist_ptID = []\n    l_imagelist_imgID
+          = []\n    l_imagelist_imgContent = []\n    for ptID in df_patient_list[''bcr_patient_barcode'']:\n\n        #
+          get case metadata for this patient\n        caseMetadata = gc.get(''tcga/case/label/%s''
+          % ptID)\n        # get caseId for this patient\n        caseId =  caseMetadata[''tcga''][''caseId'']\n\n        #
+          Get images for this case ID..\n        imageData = gc.get(\"/tcga/case/%s/images\"
+          % caseId)\n\n        for i in imageData[''data'']:\n            if i[''name''].split(''.'')[0].split(''-'')[-1]
+          == ''DX1'':\n                print(i[''name''],i[''_id''])\n                l_imagelist_ptID.append(ptID)\n                l_imagelist_imgID.append(i[''_id''])\n\n    for
+          i in range(len(l_imagelist_imgID)):\n        # retrieve image content with
+          image ID\n        imgID = l_imagelist_imgID[i]\n        imageThumb = gc.get(\"item/%s/tiles/thumbnail\"
+          % imgID,jsonResp=False)\n        img_array = np.frombuffer(imageThumb.content,
+          dtype=np.uint8)\n        img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)\n        l_imagelist_imgContent.append(img)\n\n    #
+          image shape\n    img_shape = l_imagelist_imgContent[0].shape # assume all
+          images are same shape\n    df_img_shape = pd.DataFrame([])\n    df_img_shape[''img_shape'']
+          = img_shape\n\n    # JSON of all images\n    d_images = dict()\n    for
+          i in range(len(l_imagelist_ptID)):\n        ptID = l_imagelist_ptID[i]\n        if
+          ptID not in d_images:\n            d_images[ptID] = []\n        d_images[ptID].append(l_imagelist_imgContent[i])\n    json_string_output
+          = json.dumps(d_images, cls=NumpyArrayEncoder)\n\n    # write outputs\n    ##
+          write json file\n    with open(outfile_images_json, ''w'') as outfile:\n        outfile.write(json_string_output)\n\nimport
           argparse\n_parser = argparse.ArgumentParser(prog=''Download images'', description=''Acquisition
           of images associated with patients listed'')\n_parser.add_argument(\"--file-path-patient-list\",
-          dest=\"file_path_patient_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
-          dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
+          dest=\"file_path_patient_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-images-json\",
+          dest=\"outfile_images_json\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = download_images(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
           [{"name": "file_path_patient_list", "type": "CSV"}], "name": "Download images",
-          "outputs": [{"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "outputs": [{"name": "outfile_images_json", "type": "JSON"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: get-dummies
     container:
       args: [--file, /tmp/inputs/file/data, --class-label-colname, '{{inputs.parameters.user_input_class_label_column_name}}',
