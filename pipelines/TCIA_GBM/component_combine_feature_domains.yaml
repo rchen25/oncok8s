@@ -1,0 +1,75 @@
+name: Combine feature domains
+description: Combination of features (concatenation) for early fusion model.
+inputs:
+- {name: file_path_image_fx, type: CSV, description: ''}
+- {name: file_path_clinical_fx, type: CSV, description: ''}
+- {name: file_path_image_patient_id, type: CSV, description: ''}
+- {name: file_path_clinical_patient_id, type: CSV, description: ''}
+outputs:
+- {name: outfile_master_features_df, type: CSV}
+- {name: outfile_master_patient_id_list, type: CSV}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -c
+    - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+      --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
+      \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+      \ndef combine_feature_domains(file_path_image_fx,\n                        \
+      \    file_path_clinical_fx,\n                            file_path_image_patient_id,\n\
+      \                            file_path_clinical_patient_id,\n              \
+      \              outfile_master_features_df,\n                            outfile_master_patient_id_list):\n\
+      \n    \"\"\"Combination of features (concatenation) for early fusion model.\
+      \ \n\n    Args:\n        file_path_image_fx: \n        file_path_clinical_fx:\n\
+      \        file_path_image_patient_id:\n        file_path_clinical_patient_id:\
+      \ \n    \"\"\"\n\n    import pandas as pd\n\n    df_image_fx = pd.read_csv(file_path_image_fx)\n\
+      \    df_clinical_fx = pd.read_csv(file_path_clinical_fx)\n    df_image_patient_id\
+      \ = pd.read_csv(file_path_image_patient_id)\n    df_clinical_patient_id = pd.read_csv(file_path_clinical_patient_id)\n\
+      \n    # slap on patient id column as first column\n    df_image_table_with_patient_id\
+      \ = pd.concat([df_image_patient_id, df_image_fx],\n                        \
+      \                       axis=1)\n    df_clinical_table_with_patient_id = pd.concat([df_clinical_patient_id,\
+      \ df_clinical_fx],\n                                                  axis=1)\n\
+      \n    # merge data domains\n    df_master_features = df_image_table_with_patient_id.merge(df_clinical_table_with_patient_id,\n\
+      \                                                              how='outer',\n\
+      \                                                              on='bcr_patient_barcode')\n\
+      \n    # write outputs\n    df_master_patient_id_list = df_master_features[['bcr_patient_barcode']]\n\
+      \    del df_master_features['bcr_patient_barcode']\n\n    df_master_features.to_csv(outfile_master_features_df,\
+      \ header=True, index=False)\n    df_master_patient_id_list.to_csv(outfile_master_patient_id_list,\
+      \ header=True, index=False)\n\n    l_feature_names_images = list(set(df_image_fx.columns).intersection(df_master_features.columns))\
+      \ \n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Combine feature\
+      \ domains', description='Combination of features (concatenation) for early fusion\
+      \ model.')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"file_path_image_fx\"\
+      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --file-path-clinical-fx\", dest=\"file_path_clinical_fx\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-image-patient-id\"\
+      , dest=\"file_path_image_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--file-path-clinical-patient-id\", dest=\"file_path_clinical_patient_id\"\
+      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --outfile-master-features-df\", dest=\"outfile_master_features_df\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-patient-id-list\"\
+      , dest=\"outfile_master_patient_id_list\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+      \n_outputs = combine_feature_domains(**_parsed_args)\n"
+    args:
+    - --file-path-image-fx
+    - {inputPath: file_path_image_fx}
+    - --file-path-clinical-fx
+    - {inputPath: file_path_clinical_fx}
+    - --file-path-image-patient-id
+    - {inputPath: file_path_image_patient_id}
+    - --file-path-clinical-patient-id
+    - {inputPath: file_path_clinical_patient_id}
+    - --outfile-master-features-df
+    - {outputPath: outfile_master_features_df}
+    - --outfile-master-patient-id-list
+    - {outputPath: outfile_master_patient_id_list}

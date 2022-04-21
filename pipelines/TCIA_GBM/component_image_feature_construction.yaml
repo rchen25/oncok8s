@@ -1,0 +1,97 @@
+name: Construct features image fx
+description: Feature construction from images.
+inputs:
+- {name: file_path_images, type: JSON}
+- {name: file_path_full_patient_id_list, type: CSV}
+- {name: file_path_full_patient_class_labels, type: CSV}
+outputs:
+- {name: outfile_features_df, type: CSV}
+- {name: outfile_patient_id_list, type: CSV}
+- {name: outfile_class_labels_pts_with_images, type: CSV}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -c
+    - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62' 'pandas==1.1.4'
+      || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62' 'pandas==1.1.4'
+      --user) && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
+      \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+      \ndef construct_features_image_fx(file_path_images,\n                      \
+      \          file_path_full_patient_id_list,\n                               \
+      \ file_path_full_patient_class_labels,\n                                outfile_features_df,\n\
+      \                                outfile_patient_id_list,\n                \
+      \                outfile_class_labels_pts_with_images):\n    \"\"\"Feature construction\
+      \ from images. \n\n    Args:\n        file_path: A string containing path to\
+      \ images (3-channel) in JSON obj.\n    \"\"\"\n\n    import json\n    from collections\
+      \ import OrderedDict\n    import numpy as np\n    import pandas as pd\n    from\
+      \ skimage.filters import prewitt_h,prewitt_v\n\n    # openCV features\n    input_filestream_json\
+      \ = \"./output/json_10_images.json\"\n\n    with open(file_path_images, \"r\"\
+      ) as read_file:\n        d_images_from_pl = json.load(read_file)\n\n    d_features\
+      \ = OrderedDict()\n    d_features[\"mean_weight_raw_img\"] = []\n    d_features[\"\
+      mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"\
+      ] = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID\
+      \ in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n \
+      \                   ptID]\n                        [0] # use the first image\
+      \ for the pt\n                )\n        # feature extraction\n\n        ##\
+      \ calculating horizontal edges using prewitt kernel\n        edges_prewitt_horizontal\
+      \ = prewitt_h(img[:,:,0])\n        ## calculating vertical edges using prewitt\
+      \ kernel\n        edges_prewitt_vertical = prewitt_v(img[:,:,0])\n\n       \
+      \ ## Feature: mean values \n        mean_weight_raw_img = np.mean(img)\n   \
+      \     d_features[\"mean_weight_raw_img\"].append(mean_weight_raw_img)\n\n  \
+      \      ## Feature: mean values \n        mean_edge_weight_horizontal = np.mean(edges_prewitt_horizontal)\n\
+      \        d_features[\"mean_edge_weight_horizontal\"].append(mean_edge_weight_horizontal)\n\
+      \n        ## Feature: mean values \n        mean_edge_weight_vertical = np.mean(edges_prewitt_vertical)\n\
+      \        d_features[\"mean_edge_weight_vertical\"].append(mean_edge_weight_vertical)\n\
+      \n    df_features_combined = pd.DataFrame([])\n    df_features_combined['bcr_patient_barcode']\
+      \ = l_ptID\n    for feature_name in d_features.keys():\n        df_features_combined[feature_name]\
+      \ = d_features[feature_name]\n\n    # output patient ID list\n    df_patient_id_list\
+      \ = df_features_combined[['bcr_patient_barcode']]\n    df_patient_id_list.to_csv(outfile_patient_id_list,\
+      \ header = True, index = False)\n\n    # output features\n    del df_features_combined['bcr_patient_barcode']\n\
+      \    df_features_combined.to_csv(outfile_features_df, header = True, index =\
+      \ False)\n\n    # output target class labels for this cohort of patients (not\
+      \ all patients in full\n    #  cohort will have images)\n    df_full_patient_id_list\
+      \ = pd.read_csv(file_path_full_patient_id_list)\n    df_full_patient_class_labels\
+      \ = pd.read_csv(file_path_full_patient_class_labels)\n    ## isolate patients\
+      \ that have images\n    df_slice_full_patient_id_list_have_images = df_full_patient_id_list[df_full_patient_id_list['bcr_patient_barcode'].isin(df_patient_id_list['bcr_patient_barcode'])]\n\
+      \    idx_in_full_patient_id_list_have_images = df_slice_full_patient_id_list_have_images.index\n\
+      \    df_class_labels_pts_with_images = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n\
+      \n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,\
+      \ header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,\
+      \ header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
+      \ features image fx', description='Feature construction from images.')\n_parser.add_argument(\"\
+      --file-path-images\", dest=\"file_path_images\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--file-path-full-patient-id-list\", dest=\"file_path_full_patient_id_list\"\
+      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --file-path-full-patient-class-labels\", dest=\"file_path_full_patient_class_labels\"\
+      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --outfile-features-df\", dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\"\
+      , dest=\"outfile_patient_id_list\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\"\
+      , dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+      \n_outputs = construct_features_image_fx(**_parsed_args)\n"
+    args:
+    - --file-path-images
+    - {inputPath: file_path_images}
+    - --file-path-full-patient-id-list
+    - {inputPath: file_path_full_patient_id_list}
+    - --file-path-full-patient-class-labels
+    - {inputPath: file_path_full_patient_class_labels}
+    - --outfile-features-df
+    - {outputPath: outfile_features_df}
+    - --outfile-patient-id-list
+    - {outputPath: outfile_patient_id_list}
+    - --outfile-class-labels-pts-with-images
+    - {outputPath: outfile_class_labels_pts_with_images}

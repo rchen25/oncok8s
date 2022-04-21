@@ -1,0 +1,113 @@
+name: Get dummies
+description: Distribute categorical features into separate features.
+inputs:
+- {name: file, type: CSV, description: A string containing path to input data.}
+- {name: file_path_patient_list, type: CSV}
+- {name: class_label_colname, type: String}
+- {name: s_colnames_to_exclude, type: String}
+outputs:
+- {name: output_csv_features, type: CSV}
+- {name: output_csv_target, type: CSV}
+- {name: output_csv_target_class_labels, type: CSV}
+- {name: output_csv_feature_list, type: CSV}
+- {name: output_csv_patient_list_filtered, type: CSV}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -c
+    - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+      -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+      --user) && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
+      \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
+      \ndef get_dummies(file_path,\n                file_path_patient_list,\n    \
+      \            class_label_colname,\n                s_colnames_to_exclude,\n\
+      \                output_csv_features,\n                output_csv_target,\n\
+      \                output_csv_target_class_labels,\n                output_csv_feature_list,\n\
+      \                output_csv_patient_list_filtered):\n    \"\"\"Distribute categorical\
+      \ features into separate features.\n        Input: CSV with categorical (and\
+      \ numeric) features. Assume last \n            feature is target label. \n \
+      \       Output: CSV with categorical features separated into dummies.\n\n  \
+      \  Args:\n        file_path: A string containing path to input data.\n     \
+      \   output_csv: A string containing path to processed data.\n    \"\"\"\n  \
+      \  import glob\n    import numpy as np\n    import pandas as pd\n    from sklearn\
+      \ import preprocessing\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\
+      \    l_col_names = list(df.columns)\n\n    # isolate column for target class\
+      \ label; if null, use last column\n    target_class_label = class_label_colname\
+      \ if str(class_label_colname) != '' else l_col_names[-1]\n    ## remove all\
+      \ rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n\
+      \    ## remove patients from master list whose data got removed because class\
+      \ label col was NaN\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\
+      \    df_patient_list_filtered = df_patient_list.loc[df.index]\n\n    ## extract\
+      \ target class column\n    df_target_raw = df[target_class_label] # from input\
+      \ parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
+      \ # fit to data for target class to find all classes\n    target_class_label_names\
+      \ = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\
+      \n    df_target_class_labels = pd.DataFrame({'class': target_class_label_names})\n\
+      \    d_target_class_label_idx = dict(zip(list(df_target_class_labels['class']),\
+      \ list(df_target_class_labels.index)))\n\n    l_target_column = [d_target_class_label_idx[x]\
+      \ for x in df[target_class_label]]\n    df_target = pd.DataFrame([])\n    df_target[target_class_label]\
+      \ = l_target_column# 1-column of multiple classes\n\n    # create dummies for\
+      \ every col except class label col\n    df_features = df[[x for x in l_col_names\
+      \ if x != class_label_colname]] # features are all colnames except target class\n\
+      \n    # exclude any other colnames (other than target class column), if specified;\
+      \ \n    ## performed on feature matrix after dummies are removed\n    if str(s_colnames_to_exclude)\
+      \ != '':\n        l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n\
+      \        l_colnames_in_this_df_to_exclude = [x for x in l_colnames_to_exclude\
+      \ if x in df.columns]\n        df_features = df_features.drop(l_colnames_to_exclude,\
+      \ axis = 1)\n\n    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\
+      \n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list\
+      \ = pd.DataFrame({'feature': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
+      \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
+      \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
+      \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
+      \ index = True, header = False)\n    ### save new filtered patient list\n  \
+      \  df_patient_list_filtered.to_csv(output_csv_patient_list_filtered, header=True,\
+      \ index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
+      \ dummies', description='Distribute categorical features into separate features.')\n\
+      _parser.add_argument(\"--file\", dest=\"file_path\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-patient-list\"\
+      , dest=\"file_path_patient_list\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--class-label-colname\", dest=\"class_label_colname\"\
+      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+      --s-colnames-to-exclude\", dest=\"s_colnames_to_exclude\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\"\
+      , dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\",\
+      \ dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target-class-labels\"\
+      , dest=\"output_csv_target_class_labels\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-feature-list\"\
+      , dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-patient-list-filtered\"\
+      , dest=\"output_csv_patient_list_filtered\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+      \n_outputs = get_dummies(**_parsed_args)\n"
+    args:
+    - --file
+    - {inputPath: file}
+    - --file-path-patient-list
+    - {inputPath: file_path_patient_list}
+    - --class-label-colname
+    - {inputValue: class_label_colname}
+    - --s-colnames-to-exclude
+    - {inputValue: s_colnames_to_exclude}
+    - --output-csv-features
+    - {outputPath: output_csv_features}
+    - --output-csv-target
+    - {outputPath: output_csv_target}
+    - --output-csv-target-class-labels
+    - {outputPath: output_csv_target_class_labels}
+    - --output-csv-feature-list
+    - {outputPath: output_csv_feature_list}
+    - --output-csv-patient-list-filtered
+    - {outputPath: output_csv_patient_list_filtered}
