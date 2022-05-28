@@ -5,18 +5,24 @@ inputs:
 - {name: file_path_clinical_fx, type: CSV, description: ''}
 - {name: file_path_image_patient_id, type: CSV, description: ''}
 - {name: file_path_clinical_patient_id, type: CSV, description: ''}
+- {name: param_test_set_size, type: String}
+- {name: param_random_seed, type: String}
 outputs:
 - {name: outfile_master_features_df, type: CSV}
 - {name: outfile_master_patient_id_list, type: CSV}
+- {name: output_csv_train_indexes, type: CSV}
+- {name: output_csv_test_indexes, type: CSV}
+- {name: output_csv_master_feature_list, type: CSV}
 implementation:
   container:
-    image: python:3.7
+    image: python:3.9
     command:
     - sh
     - -c
     - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-      'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-      --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+      'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+      -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
+      --user) && "$0" "$@"
     - sh
     - -ec
     - |
@@ -28,36 +34,71 @@ implementation:
       \ndef combine_feature_domains(file_path_image_fx,\n                        \
       \    file_path_clinical_fx,\n                            file_path_image_patient_id,\n\
       \                            file_path_clinical_patient_id,\n              \
-      \              outfile_master_features_df,\n                            outfile_master_patient_id_list):\n\
-      \n    \"\"\"Combination of features (concatenation) for early fusion model.\
-      \ \n\n    Args:\n        file_path_image_fx: \n        file_path_clinical_fx:\n\
-      \        file_path_image_patient_id:\n        file_path_clinical_patient_id:\
-      \ \n    \"\"\"\n\n    import pandas as pd\n\n    df_image_fx = pd.read_csv(file_path_image_fx)\n\
-      \    df_clinical_fx = pd.read_csv(file_path_clinical_fx)\n    df_image_patient_id\
-      \ = pd.read_csv(file_path_image_patient_id)\n    df_clinical_patient_id = pd.read_csv(file_path_clinical_patient_id)\n\
-      \n    # slap on patient id column as first column\n    df_image_table_with_patient_id\
-      \ = pd.concat([df_image_patient_id, df_image_fx],\n                        \
-      \                       axis=1)\n    df_clinical_table_with_patient_id = pd.concat([df_clinical_patient_id,\
-      \ df_clinical_fx],\n                                                  axis=1)\n\
-      \n    # merge data domains\n    df_master_features = df_image_table_with_patient_id.merge(df_clinical_table_with_patient_id,\n\
+      \              param_test_set_size,\n                            param_random_seed,\n\
+      \                            outfile_master_features_df,\n                 \
+      \           outfile_master_patient_id_list,\n                            output_csv_train_indexes,\n\
+      \                            output_csv_test_indexes,\n                    \
+      \        output_csv_master_feature_list):\n\n    \"\"\"Combination of features\
+      \ (concatenation) for early fusion model. \n\n    Args:\n        file_path_image_fx:\
+      \ \n        file_path_clinical_fx:\n        file_path_image_patient_id:\n  \
+      \      file_path_clinical_patient_id: \n    \"\"\"\n    import numpy as np\n\
+      \    import pandas as pd\n    from sklearn.model_selection import train_test_split\n\
+      \n    df_image_fx = pd.read_csv(file_path_image_fx)\n    df_clinical_fx = pd.read_csv(file_path_clinical_fx)\n\
+      \    df_image_patient_id = pd.read_csv(file_path_image_patient_id)\n    df_clinical_patient_id\
+      \ = pd.read_csv(file_path_clinical_patient_id)\n\n    # slap on patient id column\
+      \ as first column\n    df_image_table_with_patient_id = pd.concat([df_image_patient_id,\
+      \ df_image_fx],\n                                               axis=1)\n  \
+      \  df_clinical_table_with_patient_id = pd.concat([df_clinical_patient_id, df_clinical_fx],\n\
+      \                                                  axis=1)\n\n    # merge data\
+      \ domains\n    df_master_features = df_image_table_with_patient_id.merge(df_clinical_table_with_patient_id,\n\
       \                                                              how='outer',\n\
       \                                                              on='bcr_patient_barcode')\n\
+      \n    # create train test and store indexes, using these features\n    param_test_set_size_float\
+      \ = np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for\
+      \ test set size if needed\n    if param_test_set_size_float <= 0 or param_test_set_size_float\
+      \ >= 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int\
+      \ = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test\
+      \ = train_test_split(df_master_features, \n                                \
+      \                        df_master_features[df_master_features.columns[-1]],\
+      \ \n                                                    test_size=param_test_set_size_float,\
+      \ \n                                                    random_state=param_random_seed_int)\
+      \ # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:\
+      \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_master_features.iloc[X_train.index]['bcr_patient_barcode']\n\
+      \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
+      \    df_idx_test['bcr_patient_barcode'] = df_master_features.iloc[X_test.index]['bcr_patient_barcode']\n\
       \n    # write outputs\n    df_master_patient_id_list = df_master_features[['bcr_patient_barcode']]\n\
-      \    del df_master_features['bcr_patient_barcode']\n\n    df_master_features.to_csv(outfile_master_features_df,\
+      \    del df_master_features['bcr_patient_barcode']\n\n    ## feature matrix\
+      \ and patient id list\n    df_master_features.to_csv(outfile_master_features_df,\
       \ header=True, index=False)\n    df_master_patient_id_list.to_csv(outfile_master_patient_id_list,\
-      \ header=True, index=False)\n\n    l_feature_names_images = list(set(df_image_fx.columns).intersection(df_master_features.columns))\
-      \ \n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Combine feature\
-      \ domains', description='Combination of features (concatenation) for early fusion\
-      \ model.')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"file_path_image_fx\"\
+      \ header=True, index=False)\n\n    ## list of feature names\n    l_feature_names_images\
+      \ = list(set(df_image_fx.columns).intersection(df_master_features.columns))\
+      \ \n    df_feature_list = pd.DataFrame([])\n    df_feature_list['feature_name']\
+      \ = l_feature_names_images\n    df_feature_list.to_csv(output_csv_master_feature_list,\
+      \ header=True, index=False)\n\n    ## save training and testing splits - to\
+      \ use with all fused feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,\
+      \ index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,\
+      \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Combine\
+      \ feature domains', description='Combination of features (concatenation) for\
+      \ early fusion model.')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"\
+      file_path_image_fx\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--file-path-clinical-fx\", dest=\"file_path_clinical_fx\"\
       , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-      --file-path-clinical-fx\", dest=\"file_path_clinical_fx\", type=str, required=True,\
-      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-image-patient-id\"\
-      , dest=\"file_path_image_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n\
-      _parser.add_argument(\"--file-path-clinical-patient-id\", dest=\"file_path_clinical_patient_id\"\
+      --file-path-image-patient-id\", dest=\"file_path_image_patient_id\", type=str,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-clinical-patient-id\"\
+      , dest=\"file_path_clinical_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--param-test-set-size\", dest=\"param_test_set_size\"\
       , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-      --outfile-master-features-df\", dest=\"outfile_master_features_df\", type=_make_parent_dirs_and_return_path,\
+      --param-random-seed\", dest=\"param_random_seed\", type=str, required=True,\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-features-df\"\
+      , dest=\"outfile_master_features_df\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-patient-id-list\"\
       , dest=\"outfile_master_patient_id_list\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\"\
+      , dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\"\
+      , dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-master-feature-list\"\
+      , dest=\"output_csv_master_feature_list\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
       \n_outputs = combine_feature_domains(**_parsed_args)\n"
     args:
@@ -69,7 +110,17 @@ implementation:
     - {inputPath: file_path_image_patient_id}
     - --file-path-clinical-patient-id
     - {inputPath: file_path_clinical_patient_id}
+    - --param-test-set-size
+    - {inputValue: param_test_set_size}
+    - --param-random-seed
+    - {inputValue: param_random_seed}
     - --outfile-master-features-df
     - {outputPath: outfile_master_features_df}
     - --outfile-master-patient-id-list
     - {outputPath: outfile_master_patient_id_list}
+    - --output-csv-train-indexes
+    - {outputPath: output_csv_train_indexes}
+    - --output-csv-test-indexes
+    - {outputPath: output_csv_test_indexes}
+    - --output-csv-master-feature-list
+    - {outputPath: output_csv_master_feature_list}

@@ -5,12 +5,16 @@ inputs:
 - {name: file_path_patient_list, type: CSV}
 - {name: class_label_colname, type: String}
 - {name: s_colnames_to_exclude, type: String}
+- {name: param_test_set_size, type: String}
+- {name: param_random_seed, type: String}
 outputs:
 - {name: output_csv_features, type: CSV}
 - {name: output_csv_target, type: CSV}
 - {name: output_csv_target_class_labels, type: CSV}
 - {name: output_csv_feature_list, type: CSV}
 - {name: output_csv_patient_list_filtered, type: CSV}
+- {name: output_csv_train_indexes, type: CSV}
+- {name: output_csv_test_indexes, type: CSV}
 implementation:
   container:
     image: python:3.7
@@ -31,25 +35,27 @@ implementation:
       \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
       \ndef get_dummies(file_path,\n                file_path_patient_list,\n    \
       \            class_label_colname,\n                s_colnames_to_exclude,\n\
+      \                param_test_set_size,\n                param_random_seed,\n\
       \                output_csv_features,\n                output_csv_target,\n\
       \                output_csv_target_class_labels,\n                output_csv_feature_list,\n\
-      \                output_csv_patient_list_filtered):\n    \"\"\"Distribute categorical\
+      \                output_csv_patient_list_filtered,\n                output_csv_train_indexes,\n\
+      \                output_csv_test_indexes):\n    \"\"\"Distribute categorical\
       \ features into separate features.\n        Input: CSV with categorical (and\
       \ numeric) features. Assume last \n            feature is target label. \n \
       \       Output: CSV with categorical features separated into dummies.\n\n  \
       \  Args:\n        file_path: A string containing path to input data.\n     \
       \   output_csv: A string containing path to processed data.\n    \"\"\"\n  \
       \  import glob\n    import numpy as np\n    import pandas as pd\n    from sklearn\
-      \ import preprocessing\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\
-      \    l_col_names = list(df.columns)\n\n    # isolate column for target class\
-      \ label; if null, use last column\n    target_class_label = class_label_colname\
-      \ if str(class_label_colname) != '' else l_col_names[-1]\n    ## remove all\
-      \ rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n\
-      \    ## remove patients from master list whose data got removed because class\
-      \ label col was NaN\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\
-      \    df_patient_list_filtered = df_patient_list.loc[df.index]\n\n    ## extract\
-      \ target class column\n    df_target_raw = df[target_class_label] # from input\
-      \ parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
+      \ import preprocessing\n    from sklearn.model_selection import train_test_split\n\
+      \n    df = pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names = list(df.columns)\n\
+      \n    # isolate column for target class label; if null, use last column\n  \
+      \  target_class_label = class_label_colname if str(class_label_colname) != ''\
+      \ else l_col_names[-1]\n    ## remove all rows where class label col is NaN\n\
+      \    df = df.dropna(subset=[target_class_label])\n    ## remove patients from\
+      \ master list whose data got removed because class label col was NaN\n    df_patient_list\
+      \ = pd.read_csv(file_path_patient_list)\n    df_patient_list_filtered = df_patient_list.loc[df.index]\n\
+      \n    ## extract target class column\n    df_target_raw = df[target_class_label]\
+      \ # from input parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
       \ # fit to data for target class to find all classes\n    target_class_label_names\
       \ = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\
       \n    df_target_class_labels = pd.DataFrame({'class': target_class_label_names})\n\
@@ -64,15 +70,32 @@ implementation:
       \ != '':\n        l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n\
       \        l_colnames_in_this_df_to_exclude = [x for x in l_colnames_to_exclude\
       \ if x in df.columns]\n        df_features = df_features.drop(l_colnames_to_exclude,\
-      \ axis = 1)\n\n    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\
-      \n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list\
-      \ = pd.DataFrame({'feature': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
-      \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
-      \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
+      \ axis = 1).reset_index() # reset_index becauase need to get indexes for train/test\
+      \ later on data with rows filtered out\n\n    # get dummies\n    df_features_dummies\
+      \ = pd.get_dummies(df_features)\n\n    # feature list\n    l_features = df_features_dummies.columns\n\
+      \    df_feature_list = pd.DataFrame({'feature': l_features})\n\n    # create\
+      \ train test and store indexes, using these clinical features\n    param_test_set_size_float\
+      \ = np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for\
+      \ test set size if needed\n    if param_test_set_size_float < 0 or param_test_set_size_float\
+      \ > 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int\
+      \ = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test\
+      \ = train_test_split(df_features_dummies, df_target, \n                    \
+      \                                test_size=param_test_set_size_float, \n   \
+      \                                                 random_state=param_random_seed_int)\
+      \ # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:\
+      \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_train.index]\n\
+      \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
+      \    df_idx_test['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_test.index]\n\
+      \n    # write outputs\n    df_features_dummies.to_csv(output_csv_features, index\
+      \ = False, header = True)\n    df_target.to_csv(output_csv_target, index = False,\
+      \ header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
       \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
       \ index = True, header = False)\n    ### save new filtered patient list\n  \
       \  df_patient_list_filtered.to_csv(output_csv_patient_list_filtered, header=True,\
-      \ index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
+      \ index=False)\n    ### save training and testing splits - to use with all fused\
+      \ feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,\
+      \ index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,\
+      \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
       \ dummies', description='Distribute categorical features into separate features.')\n\
       _parser.add_argument(\"--file\", dest=\"file_path\", type=str, required=True,\
       \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-patient-list\"\
@@ -80,7 +103,10 @@ implementation:
       _parser.add_argument(\"--class-label-colname\", dest=\"class_label_colname\"\
       , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
       --s-colnames-to-exclude\", dest=\"s_colnames_to_exclude\", type=str, required=True,\
-      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\"\
+      \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-test-set-size\"\
+      , dest=\"param_test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--param-random-seed\", dest=\"param_random_seed\", type=str,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\"\
       , dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,\
       \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\",\
       \ dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,\
@@ -90,6 +116,10 @@ implementation:
       , dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-patient-list-filtered\"\
       , dest=\"output_csv_patient_list_filtered\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\"\
+      , dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\"\
+      , dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
       \n_outputs = get_dummies(**_parsed_args)\n"
     args:
@@ -101,6 +131,10 @@ implementation:
     - {inputValue: class_label_colname}
     - --s-colnames-to-exclude
     - {inputValue: s_colnames_to_exclude}
+    - --param-test-set-size
+    - {inputValue: param_test_set_size}
+    - --param-random-seed
+    - {inputValue: param_random_seed}
     - --output-csv-features
     - {outputPath: output_csv_features}
     - --output-csv-target
@@ -111,3 +145,7 @@ implementation:
     - {outputPath: output_csv_feature_list}
     - --output-csv-patient-list-filtered
     - {outputPath: output_csv_patient_list_filtered}
+    - --output-csv-train-indexes
+    - {outputPath: output_csv_train_indexes}
+    - --output-csv-test-indexes
+    - {outputPath: output_csv_test_indexes}

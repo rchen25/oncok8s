@@ -1,4 +1,4 @@
-name: Construct features image fx
+name: Construct features image skimage opencv
 description: Feature construction from images.
 inputs:
 - {name: file_path_images, type: JSON}
@@ -27,22 +27,22 @@ implementation:
       python3 -u "$program_path" "$@"
     - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n   \
       \ os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-      \ndef construct_features_image_fx(file_path_images,\n                      \
-      \          file_path_full_patient_id_list,\n                               \
-      \ file_path_full_patient_class_labels,\n                                outfile_features_df,\n\
-      \                                outfile_patient_id_list,\n                \
-      \                outfile_class_labels_pts_with_images):\n    \"\"\"Feature construction\
-      \ from images. \n\n    Args:\n        file_path: A string containing path to\
-      \ images (3-channel) in JSON obj.\n    \"\"\"\n\n    import json\n    from collections\
-      \ import OrderedDict\n    import numpy as np\n    import pandas as pd\n    from\
-      \ skimage.filters import prewitt_h,prewitt_v\n\n    # openCV features\n    input_filestream_json\
-      \ = \"./output/json_10_images.json\"\n\n    with open(file_path_images, \"r\"\
-      ) as read_file:\n        d_images_from_pl = json.load(read_file)\n\n    d_features\
-      \ = OrderedDict()\n    d_features[\"mean_weight_raw_img\"] = []\n    d_features[\"\
-      mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"\
-      ] = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID\
-      \ in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n \
-      \                   ptID]\n                        [0] # use the first image\
+      \ndef construct_features_image_skimage_opencv(file_path_images,\n          \
+      \                      file_path_full_patient_id_list,\n                   \
+      \             file_path_full_patient_class_labels,\n                       \
+      \         outfile_features_df,\n                                outfile_patient_id_list,\n\
+      \                                outfile_class_labels_pts_with_images):\n  \
+      \  \"\"\"Feature construction from images. \n\n    Args:\n        file_path:\
+      \ A string containing path to images (3-channel) in JSON obj.\n    \"\"\"\n\n\
+      \    import json\n    from collections import OrderedDict\n    import numpy\
+      \ as np\n    import pandas as pd\n    from skimage.filters import prewitt_h,prewitt_v\n\
+      \n    # openCV features\n    input_filestream_json = \"./output/json_10_images.json\"\
+      \n\n    with open(file_path_images, \"r\") as read_file:\n        d_images_from_pl\
+      \ = json.load(read_file)\n\n    d_features = OrderedDict()\n    d_features[\"\
+      mean_weight_raw_img\"] = []\n    d_features[\"mean_edge_weight_horizontal\"\
+      ] = []\n    d_features[\"mean_edge_weight_vertical\"] = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n\
+      \    for ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n\
+      \                    ptID]\n                        [0] # use the first image\
       \ for the pt\n                )\n        # feature extraction\n\n        ##\
       \ calculating horizontal edges using prewitt kernel\n        edges_prewitt_horizontal\
       \ = prewitt_h(img[:,:,0])\n        ## calculating vertical edges using prewitt\
@@ -69,11 +69,11 @@ implementation:
       \n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,\
       \ header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,\
       \ header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
-      \ features image fx', description='Feature construction from images.')\n_parser.add_argument(\"\
-      --file-path-images\", dest=\"file_path_images\", type=str, required=True, default=argparse.SUPPRESS)\n\
-      _parser.add_argument(\"--file-path-full-patient-id-list\", dest=\"file_path_full_patient_id_list\"\
-      , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-      --file-path-full-patient-class-labels\", dest=\"file_path_full_patient_class_labels\"\
+      \ features image skimage opencv', description='Feature construction from images.')\n\
+      _parser.add_argument(\"--file-path-images\", dest=\"file_path_images\", type=str,\
+      \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\"\
+      , dest=\"file_path_full_patient_id_list\", type=str, required=True, default=argparse.SUPPRESS)\n\
+      _parser.add_argument(\"--file-path-full-patient-class-labels\", dest=\"file_path_full_patient_class_labels\"\
       , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
       --outfile-features-df\", dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\"\
@@ -81,7 +81,7 @@ implementation:
       \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\"\
       , dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,\
       \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
-      \n_outputs = construct_features_image_fx(**_parsed_args)\n"
+      \n_outputs = construct_features_image_skimage_opencv(**_parsed_args)\n"
     args:
     - --file-path-images
     - {inputPath: file_path_images}

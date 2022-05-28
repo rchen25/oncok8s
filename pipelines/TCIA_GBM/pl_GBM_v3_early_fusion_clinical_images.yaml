@@ -2,13 +2,14 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v3-early-fusion-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-20T23:54:19.741189',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-05-28T17:02:01.857712',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
       {"description": "other columns to exclude, other than the ones automatically
       \nfiltered out in make_dfs(); separate colnames by '',''", "name": "s_colnames_to_exclude"},
-      {"name": "test_set_size"}], "name": "Pl GBM v3 early fusion clinical images"}'}
+      {"name": "test_set_size"}, {"name": "param_random_seed"}], "name": "Pl GBM v3
+      early fusion clinical images"}'}
   labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12}
 spec:
   entrypoint: pl-gbm-v3-early-fusion-clinical-images
@@ -18,14 +19,19 @@ spec:
       args: [--file-path-image-fx, /tmp/inputs/file_path_image_fx/data, --file-path-clinical-fx,
         /tmp/inputs/file_path_clinical_fx/data, --file-path-image-patient-id, /tmp/inputs/file_path_image_patient_id/data,
         --file-path-clinical-patient-id, /tmp/inputs/file_path_clinical_patient_id/data,
-        --outfile-master-features-df, /tmp/outputs/outfile_master_features_df/data,
-        --outfile-master-patient-id-list, /tmp/outputs/outfile_master_patient_id_list/data]
+        --param-test-set-size, '{{inputs.parameters.test_set_size}}', --param-random-seed,
+        '{{inputs.parameters.param_random_seed}}', --outfile-master-features-df, /tmp/outputs/outfile_master_features_df/data,
+        --outfile-master-patient-id-list, /tmp/outputs/outfile_master_patient_id_list/data,
+        --output-csv-train-indexes, /tmp/outputs/output_csv_train_indexes/data, --output-csv-test-indexes,
+        /tmp/outputs/output_csv_test_indexes/data, --output-csv-master-feature-list,
+        /tmp/outputs/output_csv_master_feature_list/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-        --quiet --no-warn-script-location 'pandas==1.1.4' --user) && "$0" "$@"
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -37,11 +43,15 @@ spec:
         \ndef combine_feature_domains(file_path_image_fx,\n                      \
         \      file_path_clinical_fx,\n                            file_path_image_patient_id,\n\
         \                            file_path_clinical_patient_id,\n            \
-        \                outfile_master_features_df,\n                           \
-        \ outfile_master_patient_id_list):\n\n    \"\"\"Combination of features (concatenation)\
-        \ for early fusion model. \n\n    Args:\n        file_path_image_fx: \n  \
-        \      file_path_clinical_fx:\n        file_path_image_patient_id:\n     \
-        \   file_path_clinical_patient_id: \n    \"\"\"\n\n    import pandas as pd\n\
+        \                param_test_set_size,\n                            param_random_seed,\n\
+        \                            outfile_master_features_df,\n               \
+        \             outfile_master_patient_id_list,\n                          \
+        \  output_csv_train_indexes,\n                            output_csv_test_indexes,\n\
+        \                            output_csv_master_feature_list):\n\n    \"\"\"\
+        Combination of features (concatenation) for early fusion model. \n\n    Args:\n\
+        \        file_path_image_fx: \n        file_path_clinical_fx:\n        file_path_image_patient_id:\n\
+        \        file_path_clinical_patient_id: \n    \"\"\"\n    import numpy as\
+        \ np\n    import pandas as pd\n    from sklearn.model_selection import train_test_split\n\
         \n    df_image_fx = pd.read_csv(file_path_image_fx)\n    df_clinical_fx =\
         \ pd.read_csv(file_path_clinical_fx)\n    df_image_patient_id = pd.read_csv(file_path_image_patient_id)\n\
         \    df_clinical_patient_id = pd.read_csv(file_path_clinical_patient_id)\n\
@@ -53,35 +63,71 @@ spec:
         \ df_master_features = df_image_table_with_patient_id.merge(df_clinical_table_with_patient_id,\n\
         \                                                              how='outer',\n\
         \                                                              on='bcr_patient_barcode')\n\
+        \n    # create train test and store indexes, using these features\n    param_test_set_size_float\
+        \ = np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for\
+        \ test set size if needed\n    if param_test_set_size_float <= 0 or param_test_set_size_float\
+        \ >= 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int\
+        \ = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test\
+        \ = train_test_split(df_master_features, \n                              \
+        \                          df_master_features[df_master_features.columns[-1]],\
+        \ \n                                                    test_size=param_test_set_size_float,\
+        \ \n                                                    random_state=param_random_seed_int)\
+        \ # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:\
+        \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_master_features.iloc[X_train.index]['bcr_patient_barcode']\n\
+        \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
+        \    df_idx_test['bcr_patient_barcode'] = df_master_features.iloc[X_test.index]['bcr_patient_barcode']\n\
         \n    # write outputs\n    df_master_patient_id_list = df_master_features[['bcr_patient_barcode']]\n\
-        \    del df_master_features['bcr_patient_barcode']\n\n    df_master_features.to_csv(outfile_master_features_df,\
+        \    del df_master_features['bcr_patient_barcode']\n\n    ## feature matrix\
+        \ and patient id list\n    df_master_features.to_csv(outfile_master_features_df,\
         \ header=True, index=False)\n    df_master_patient_id_list.to_csv(outfile_master_patient_id_list,\
-        \ header=True, index=False)\n\n    l_feature_names_images = list(set(df_image_fx.columns).intersection(df_master_features.columns))\
-        \ \n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Combine feature\
-        \ domains', description='Combination of features (concatenation) for early\
-        \ fusion model.')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"\
+        \ header=True, index=False)\n\n    ## list of feature names\n    l_feature_names_images\
+        \ = list(set(df_image_fx.columns).intersection(df_master_features.columns))\
+        \ \n    df_feature_list = pd.DataFrame([])\n    df_feature_list['feature_name']\
+        \ = l_feature_names_images\n    df_feature_list.to_csv(output_csv_master_feature_list,\
+        \ header=True, index=False)\n\n    ## save training and testing splits - to\
+        \ use with all fused feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,\
+        \ index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Combine\
+        \ feature domains', description='Combination of features (concatenation) for\
+        \ early fusion model.')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"\
         file_path_image_fx\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--file-path-clinical-fx\", dest=\"file_path_clinical_fx\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
         --file-path-image-patient-id\", dest=\"file_path_image_patient_id\", type=str,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-clinical-patient-id\"\
         , dest=\"file_path_clinical_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--outfile-master-features-df\", dest=\"outfile_master_features_df\"\
-        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--outfile-master-patient-id-list\", dest=\"outfile_master_patient_id_list\"\
-        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
-        _parsed_args = vars(_parser.parse_args())\n\n_outputs = combine_feature_domains(**_parsed_args)\n"
-      image: python:3.7
+        _parser.add_argument(\"--param-test-set-size\", dest=\"param_test_set_size\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --param-random-seed\", dest=\"param_random_seed\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-features-df\"\
+        , dest=\"outfile_master_features_df\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-patient-id-list\"\
+        , dest=\"outfile_master_patient_id_list\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\"\
+        , dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\"\
+        , dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-master-feature-list\"\
+        , dest=\"output_csv_master_feature_list\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = combine_feature_domains(**_parsed_args)\n"
+      image: python:3.9
     inputs:
+      parameters:
+      - {name: param_random_seed}
+      - {name: test_set_size}
       artifacts:
       - {name: get-dummies-output_csv_features, path: /tmp/inputs/file_path_clinical_fx/data}
       - {name: get-dummies-output_csv_patient_list_filtered, path: /tmp/inputs/file_path_clinical_patient_id/data}
-      - {name: construct-features-image-fx-outfile_features_df, path: /tmp/inputs/file_path_image_fx/data}
-      - {name: construct-features-image-fx-outfile_patient_id_list, path: /tmp/inputs/file_path_image_patient_id/data}
+      - {name: construct-features-images-histomicstk-outfile_features_df, path: /tmp/inputs/file_path_image_fx/data}
+      - {name: construct-features-images-histomicstk-outfile_patient_id_list, path: /tmp/inputs/file_path_image_patient_id/data}
     outputs:
       artifacts:
       - {name: combine-feature-domains-outfile_master_features_df, path: /tmp/outputs/outfile_master_features_df/data}
       - {name: combine-feature-domains-outfile_master_patient_id_list, path: /tmp/outputs/outfile_master_patient_id_list/data}
+      - {name: combine-feature-domains-output_csv_master_feature_list, path: /tmp/outputs/output_csv_master_feature_list/data}
+      - {name: combine-feature-domains-output_csv_test_indexes, path: /tmp/outputs/output_csv_test_indexes/data}
+      - {name: combine-feature-domains-output_csv_train_indexes, path: /tmp/outputs/output_csv_train_indexes/data}
     metadata:
       labels:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
@@ -92,62 +138,104 @@ spec:
           {"container": {"args": ["--file-path-image-fx", {"inputPath": "file_path_image_fx"},
           "--file-path-clinical-fx", {"inputPath": "file_path_clinical_fx"}, "--file-path-image-patient-id",
           {"inputPath": "file_path_image_patient_id"}, "--file-path-clinical-patient-id",
-          {"inputPath": "file_path_clinical_patient_id"}, "--outfile-master-features-df",
-          {"outputPath": "outfile_master_features_df"}, "--outfile-master-patient-id-list",
-          {"outputPath": "outfile_master_patient_id_list"}], "command": ["sh", "-c",
-          "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-          --quiet --no-warn-script-location ''pandas==1.1.4'' --user) && \"$0\" \"$@\"",
-          "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          {"inputPath": "file_path_clinical_patient_id"}, "--param-test-set-size",
+          {"inputValue": "param_test_set_size"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--outfile-master-features-df", {"outputPath": "outfile_master_features_df"},
+          "--outfile-master-patient-id-list", {"outputPath": "outfile_master_patient_id_list"},
+          "--output-csv-train-indexes", {"outputPath": "output_csv_train_indexes"},
+          "--output-csv-test-indexes", {"outputPath": "output_csv_test_indexes"},
+          "--output-csv-master-feature-list", {"outputPath": "output_csv_master_feature_list"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''pandas==1.4.2'' ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh",
+          "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
           -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
           str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef combine_feature_domains(file_path_image_fx,\n                            file_path_clinical_fx,\n                            file_path_image_patient_id,\n                            file_path_clinical_patient_id,\n                            outfile_master_features_df,\n                            outfile_master_patient_id_list):\n\n    \"\"\"Combination
+          file_path\n\ndef combine_feature_domains(file_path_image_fx,\n                            file_path_clinical_fx,\n                            file_path_image_patient_id,\n                            file_path_clinical_patient_id,\n                            param_test_set_size,\n                            param_random_seed,\n                            outfile_master_features_df,\n                            outfile_master_patient_id_list,\n                            output_csv_train_indexes,\n                            output_csv_test_indexes,\n                            output_csv_master_feature_list):\n\n    \"\"\"Combination
           of features (concatenation) for early fusion model. \n\n    Args:\n        file_path_image_fx:
           \n        file_path_clinical_fx:\n        file_path_image_patient_id:\n        file_path_clinical_patient_id:
-          \n    \"\"\"\n\n    import pandas as pd\n\n    df_image_fx = pd.read_csv(file_path_image_fx)\n    df_clinical_fx
+          \n    \"\"\"\n    import numpy as np\n    import pandas as pd\n    from
+          sklearn.model_selection import train_test_split\n\n    df_image_fx = pd.read_csv(file_path_image_fx)\n    df_clinical_fx
           = pd.read_csv(file_path_clinical_fx)\n    df_image_patient_id = pd.read_csv(file_path_image_patient_id)\n    df_clinical_patient_id
           = pd.read_csv(file_path_clinical_patient_id)\n\n    # slap on patient id
           column as first column\n    df_image_table_with_patient_id = pd.concat([df_image_patient_id,
           df_image_fx],\n                                               axis=1)\n    df_clinical_table_with_patient_id
           = pd.concat([df_clinical_patient_id, df_clinical_fx],\n                                                  axis=1)\n\n    #
           merge data domains\n    df_master_features = df_image_table_with_patient_id.merge(df_clinical_table_with_patient_id,\n                                                              how=''outer'',\n                                                              on=''bcr_patient_barcode'')\n\n    #
+          create train test and store indexes, using these features\n    param_test_set_size_float
+          = np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for
+          test set size if needed\n    if param_test_set_size_float <= 0 or param_test_set_size_float
+          >= 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int
+          = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test
+          = train_test_split(df_master_features, \n                                                        df_master_features[df_master_features.columns[-1]],
+          \n                                                    test_size=param_test_set_size_float,
+          \n                                                    random_state=param_random_seed_int)
+          # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:
+          \"index\"})\n    df_idx_train[''bcr_patient_barcode''] = df_master_features.iloc[X_train.index][''bcr_patient_barcode'']\n    df_idx_test
+          = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
+          = df_master_features.iloc[X_test.index][''bcr_patient_barcode'']\n\n    #
           write outputs\n    df_master_patient_id_list = df_master_features[[''bcr_patient_barcode'']]\n    del
-          df_master_features[''bcr_patient_barcode'']\n\n    df_master_features.to_csv(outfile_master_features_df,
+          df_master_features[''bcr_patient_barcode'']\n\n    ## feature matrix and
+          patient id list\n    df_master_features.to_csv(outfile_master_features_df,
           header=True, index=False)\n    df_master_patient_id_list.to_csv(outfile_master_patient_id_list,
-          header=True, index=False)\n\n    l_feature_names_images = list(set(df_image_fx.columns).intersection(df_master_features.columns))
-          \n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Combine feature
-          domains'', description=''Combination of features (concatenation) for early
-          fusion model.'')\n_parser.add_argument(\"--file-path-image-fx\", dest=\"file_path_image_fx\",
-          type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-clinical-fx\",
+          header=True, index=False)\n\n    ## list of feature names\n    l_feature_names_images
+          = list(set(df_image_fx.columns).intersection(df_master_features.columns))
+          \n    df_feature_list = pd.DataFrame([])\n    df_feature_list[''feature_name'']
+          = l_feature_names_images\n    df_feature_list.to_csv(output_csv_master_feature_list,
+          header=True, index=False)\n\n    ## save training and testing splits - to
+          use with all fused feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,
+          index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Combine
+          feature domains'', description=''Combination of features (concatenation)
+          for early fusion model.'')\n_parser.add_argument(\"--file-path-image-fx\",
+          dest=\"file_path_image_fx\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-clinical-fx\",
           dest=\"file_path_clinical_fx\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-image-patient-id\",
           dest=\"file_path_image_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-clinical-patient-id\",
-          dest=\"file_path_clinical_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-features-df\",
+          dest=\"file_path_clinical_patient_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-test-set-size\",
+          dest=\"param_test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-features-df\",
           dest=\"outfile_master_features_df\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-master-patient-id-list\",
           dest=\"outfile_master_patient_id_list\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\",
+          dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\",
+          dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-master-feature-list\",
+          dest=\"output_csv_master_feature_list\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = combine_feature_domains(**_parsed_args)\n"], "image": "python:3.7"}},
+          = combine_feature_domains(**_parsed_args)\n"], "image": "python:3.9"}},
           "inputs": [{"description": "", "name": "file_path_image_fx", "type": "CSV"},
           {"description": "", "name": "file_path_clinical_fx", "type": "CSV"}, {"description":
           "", "name": "file_path_image_patient_id", "type": "CSV"}, {"description":
-          "", "name": "file_path_clinical_patient_id", "type": "CSV"}], "name": "Combine
-          feature domains", "outputs": [{"name": "outfile_master_features_df", "type":
-          "CSV"}, {"name": "outfile_master_patient_id_list", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
-  - name: construct-features-image-fx
+          "", "name": "file_path_clinical_patient_id", "type": "CSV"}, {"name": "param_test_set_size",
+          "type": "String"}, {"name": "param_random_seed", "type": "String"}], "name":
+          "Combine feature domains", "outputs": [{"name": "outfile_master_features_df",
+          "type": "CSV"}, {"name": "outfile_master_patient_id_list", "type": "CSV"},
+          {"name": "output_csv_train_indexes", "type": "CSV"}, {"name": "output_csv_test_indexes",
+          "type": "CSV"}, {"name": "output_csv_master_feature_list", "type": "CSV"}]}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed":
+          "{{inputs.parameters.param_random_seed}}", "param_test_set_size": "{{inputs.parameters.test_set_size}}"}'}
+  - name: construct-features-images-histomicstk
     container:
       args: [--file-path-images, /tmp/inputs/file_path_images/data, --file-path-full-patient-id-list,
         /tmp/inputs/file_path_full_patient_id_list/data, --file-path-full-patient-class-labels,
-        /tmp/inputs/file_path_full_patient_class_labels/data, --outfile-features-df,
-        /tmp/outputs/outfile_features_df/data, --outfile-patient-id-list, /tmp/outputs/outfile_patient_id_list/data,
-        --outfile-class-labels-pts-with-images, /tmp/outputs/outfile_class_labels_pts_with_images/data]
+        /tmp/inputs/file_path_full_patient_class_labels/data, --param-test-set-size,
+        '{{inputs.parameters.test_set_size}}', --param-random-seed, '{{inputs.parameters.param_random_seed}}',
+        --outfile-features-df, /tmp/outputs/outfile_features_df/data, --outfile-patient-id-list,
+        /tmp/outputs/outfile_patient_id_list/data, --outfile-class-labels-pts-with-images,
+        /tmp/outputs/outfile_class_labels_pts_with_images/data, --output-csv-train-indexes,
+        /tmp/outputs/output_csv_train_indexes/data, --output-csv-test-indexes, /tmp/outputs/output_csv_test_indexes/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
-        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-        --quiet --no-warn-script-location 'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
-        'pandas==1.1.4' --user) && "$0" "$@"
+        'cytoolz==0.11.2' 'conda==4.3.16' 'large_image==1.14.3' 'numpy==1.22.3' 'pandas==1.4.2'
+        'scikit-image==0.19.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1
+        python3 -m pip install --quiet --no-warn-script-location 'cytoolz==0.11.2'
+        'conda==4.3.16' 'large_image==1.14.3' 'numpy==1.22.3' 'pandas==1.4.2' 'scikit-image==0.19.2'
+        'scikit-learn==1.0.2' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -156,25 +244,75 @@ spec:
         python3 -u "$program_path" "$@"
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-        \ndef construct_features_image_fx(file_path_images,\n                    \
-        \            file_path_full_patient_id_list,\n                           \
-        \     file_path_full_patient_class_labels,\n                             \
-        \   outfile_features_df,\n                                outfile_patient_id_list,\n\
-        \                                outfile_class_labels_pts_with_images):\n\
-        \    \"\"\"Feature construction from images. \n\n    Args:\n        file_path:\
-        \ A string containing path to images (3-channel) in JSON obj.\n    \"\"\"\n\
-        \n    import json\n    from collections import OrderedDict\n    import numpy\
-        \ as np\n    import pandas as pd\n    from skimage.filters import prewitt_h,prewitt_v\n\
-        \n    # openCV features\n    input_filestream_json = \"./output/json_10_images.json\"\
-        \n\n    with open(file_path_images, \"r\") as read_file:\n        d_images_from_pl\
-        \ = json.load(read_file)\n\n    d_features = OrderedDict()\n    d_features[\"\
-        mean_weight_raw_img\"] = []\n    d_features[\"mean_edge_weight_horizontal\"\
-        ] = []\n    d_features[\"mean_edge_weight_vertical\"] = []\n\n    l_ptID =\
-        \ np.sort(list(d_images_from_pl.keys()))\n    for ptID in l_ptID:\n      \
-        \  img = np.array(\n                d_images_from_pl[\n                  \
-        \  ptID]\n                        [0] # use the first image for the pt\n \
-        \               )\n        # feature extraction\n\n        ## calculating\
-        \ horizontal edges using prewitt kernel\n        edges_prewitt_horizontal\
+        \ndef construct_features_images_histomicstk(file_path_images,\n          \
+        \                      file_path_full_patient_id_list,\n                 \
+        \               file_path_full_patient_class_labels,\n                   \
+        \             param_test_set_size,\n                                param_random_seed,\n\
+        \                                outfile_features_df,\n                  \
+        \              outfile_patient_id_list,\n                                outfile_class_labels_pts_with_images,\n\
+        \                                output_csv_train_indexes,\n             \
+        \                   output_csv_test_indexes):\n    \"\"\"Feature construction\
+        \ from images. \n\n    Args:\n        file_path: A string containing path\
+        \ to images (3-channel) in JSON obj.\n    \"\"\"\n\n    #####\n    import\
+        \ os\n    import pip\n    import subprocess\n    import sys\n    def install(package):\n\
+        \        subprocess.check_call([sys.executable, \"-m\", \"pip\", \"install\"\
+        , package])\n    def uninstall(package):\n        subprocess.check_call([sys.executable,\
+        \ \"-m\", \"pip\", \"uninstall\", \"-y\", package])            \n\n    import\
+        \ conda.cli\n\n    subprocess.check_call([sys.executable, \"-m\", \"pip\"\
+        , \"install\", \"histomicstk==1.2.0\",\n                           \"--find-links\"\
+        , \"https://girder.github.io/large_image_wheels\"]) ## install with find-links\n\
+        \n    ##################################################################################\n\
+        \    #\n    # IMPT NOTE: need global import for packages installed programatically\n\
+        \    # https://stackoverflow.com/questions/59308781/python-module-not-importing-after-installing-programmatically\n\
+        \    #\n    #          import importlib\n    #          globals()[package]\
+        \ = importlib.import_module(package)\n    # Note: python does not add it to\
+        \ path automatically, so need to add sys.path.append(site.getusersitepackages())\n\
+        \    #    https://kubeflow-pipelines.readthedocs.io/en/stable/_modules/kfp/components/_python_op.html\n\
+        \    #   \n    ##################################################################################\n\
+        \n    import site\n    sys.path.append(site.getusersitepackages())\n    sys.path.append('/root/.local/lib/python3.10/site-packages')\n\
+        \    sys.path.append('/usr/local/lib/python3.10/site-packages')\n    sys.path.append('/root/.local/lib/python3.9/site-packages')\n\
+        \    sys.path.append('/usr/local/lib/python3.9/site-packages')\n    sys.path.append('/root/.local/lib/python3.8/site-packages')\n\
+        \    sys.path.append('/usr/local/lib/python3.8/site-packages')\n    sys.path.append('/root/.local/lib/python3.7/site-packages')\n\
+        \    sys.path.append('/usr/local/lib/python3.7/site-packages')\n    sys.path.append('/usr/local')\n\
+        \    sys.path.append('/root/.local')\n    sys.path.append('/usr/local/bin')\n\
+        \    sys.path.append('/root/.local/bin')\n    print(sys.path)\n    print(os.listdir('/usr/local/lib/python3.9/site-packages/histomicstk/segmentation/label/'))\n\
+        \    import histomicstk.segmentation.positive_pixel_count as ppc\n\n    import\
+        \ json\n    from collections import OrderedDict\n    import numpy as np\n\
+        \    import pandas as pd\n\n    import large_image\n    import skimage.io\n\
+        \    from skimage.filters import prewitt_h,prewitt_v\n    from sklearn.model_selection\
+        \ import train_test_split\n\n    # open images\n\n    with open(file_path_images,\
+        \ \"r\") as read_file:\n        d_images_from_pl = json.load(read_file)\n\n\
+        \    # compute histomicstk features\n\n    # make d_features and add all ppc-related\
+        \ features\n    d_features = OrderedDict()\n    d_features['IntensitySumWeakPositive']\
+        \ = []\n    d_features['IntensitySumPositive'] = []\n    d_features['IntensitySumStrongPositive']\
+        \ = []\n    d_features['IntensityAverage'] = []\n    d_features['RatioStrongToTotal']\
+        \ = []\n    d_features['IntensityAverageWeakAndPositive'] = []\n\n    ## set\
+        \ template params\n    template_params = ppc.Parameters(\n    hue_value=0.05,\n\
+        \    hue_width=9999,\n    saturation_minimum=0.05,\n    intensity_upper_limit=0.95,\n\
+        \    intensity_weak_threshold=0.65,\n    intensity_strong_threshold=0.35,\n\
+        \    intensity_lower_limit=0.05)\n\n    image_url = ('https://data.kitware.com/api/v1/file/'\n\
+        \                 '598b71ee8d777f7d33e9c1d4/download')  # DAB.png\n    img_input_sample\
+        \ = skimage.io.imread(image_url)\n\n    ## compute for each patient's image\n\
+        \    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID in l_ptID:\n\
+        \        img = np.array(\n                d_images_from_pl[\n            \
+        \        ptID]\n                        [0] # use the first image for the\
+        \ pt\n                )\n        # feature extraction  \n        try:\n  \
+        \          stats, label_image = ppc.count_image(img, template_params)\n  \
+        \      except: ## Placeholder - use sample image\n            stats, label_image\
+        \ = ppc.count_image(img_input_sample, template_params)\n\n        d_features['IntensitySumWeakPositive'].append(stats.IntensitySumWeakPositive)\n\
+        \        d_features['IntensitySumPositive'].append(stats.IntensitySumPositive)\n\
+        \        d_features['IntensitySumStrongPositive'].append(stats.IntensitySumStrongPositive)\n\
+        \        d_features['IntensityAverage'].append(stats.IntensityAverage)\n \
+        \       d_features['RatioStrongToTotal'].append(stats.RatioStrongToTotal)\n\
+        \        d_features['IntensityAverageWeakAndPositive'].append(stats.IntensityAverageWeakAndPositive)\n\
+        \n    ##########################################\n\n    # compute features\
+        \ and append to d_features - skimage\n    d_features[\"mean_weight_raw_img\"\
+        ] = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"\
+        mean_edge_weight_vertical\"] = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n\
+        \    for ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n\
+        \                    ptID]\n                        [0] # use the first image\
+        \ for the pt\n                )\n        # feature extraction\n\n        ##\
+        \ calculating horizontal edges using prewitt kernel\n        edges_prewitt_horizontal\
         \ = prewitt_h(img[:,:,0])\n        ## calculating vertical edges using prewitt\
         \ kernel\n        edges_prewitt_vertical = prewitt_v(img[:,:,0])\n\n     \
         \   ## Feature: mean values \n        mean_weight_raw_img = np.mean(img)\n\
@@ -197,33 +335,63 @@ spec:
         \ that have images\n    df_slice_full_patient_id_list_have_images = df_full_patient_id_list[df_full_patient_id_list['bcr_patient_barcode'].isin(df_patient_id_list['bcr_patient_barcode'])]\n\
         \    idx_in_full_patient_id_list_have_images = df_slice_full_patient_id_list_have_images.index\n\
         \    df_class_labels_pts_with_images = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n\
-        \n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,\
+        \    ## write outputs for class labels (y) and patient id list (just for these\
+        \ pts that have images)\n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,\
         \ header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,\
-        \ header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
-        \ features image fx', description='Feature construction from images.')\n_parser.add_argument(\"\
-        --file-path-images\", dest=\"file_path_images\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\"\
+        \ header=True, index=False)\n\n    ## create train test and store indexes,\
+        \ using these clinical features\n    param_test_set_size_float = np.float64(param_test_set_size)\n\
+        \    ### set a valid value of 0.25 for test set size if needed\n    if param_test_set_size_float\
+        \ < 0 or param_test_set_size_float > 1:\n        param_test_set_size_float\
+        \ = 0.25    \n\n    param_random_seed_int = int(np.float64(param_random_seed))\n\
+        \    X_train, X_test, y_train, y_test = train_test_split(df_features_combined,\
+        \ df_class_labels_pts_with_images, \n                                    \
+        \                test_size=param_test_set_size_float, \n                 \
+        \                                   random_state=param_random_seed_int) #\
+        \ IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:\
+        \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_train.index]\n\
+        \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
+        \    df_idx_test['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_test.index]\n\
+        \    ## save training and testing splits - to be used for instances where\
+        \ just these image data are used in expt\n    df_idx_train.to_csv(output_csv_train_indexes,\
+        \ index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
+        \ features images histomicstk', description='Feature construction from images.')\n\
+        _parser.add_argument(\"--file-path-images\", dest=\"file_path_images\", type=str,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\"\
         , dest=\"file_path_full_patient_id_list\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--file-path-full-patient-class-labels\", dest=\"file_path_full_patient_class_labels\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --outfile-features-df\", dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\"\
-        , dest=\"outfile_patient_id_list\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\"\
-        , dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
-        \n_outputs = construct_features_image_fx(**_parsed_args)\n"
-      image: python:3.7
+        --param-test-set-size\", dest=\"param_test_set_size\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
+        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--outfile-features-df\", dest=\"outfile_features_df\"\
+        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--outfile-patient-id-list\", dest=\"outfile_patient_id_list\"\
+        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--outfile-class-labels-pts-with-images\", dest=\"outfile_class_labels_pts_with_images\"\
+        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-csv-train-indexes\", dest=\"output_csv_train_indexes\"\
+        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-csv-test-indexes\", dest=\"output_csv_test_indexes\"\
+        , type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
+        _parsed_args = vars(_parser.parse_args())\n\n_outputs = construct_features_images_histomicstk(**_parsed_args)\n"
+      image: python:3.9
     inputs:
+      parameters:
+      - {name: param_random_seed}
+      - {name: test_set_size}
       artifacts:
       - {name: get-dummies-output_csv_target, path: /tmp/inputs/file_path_full_patient_class_labels/data}
       - {name: get-dummies-output_csv_patient_list_filtered, path: /tmp/inputs/file_path_full_patient_id_list/data}
       - {name: download-images-outfile_images_json, path: /tmp/inputs/file_path_images/data}
     outputs:
       artifacts:
-      - {name: construct-features-image-fx-outfile_class_labels_pts_with_images, path: /tmp/outputs/outfile_class_labels_pts_with_images/data}
-      - {name: construct-features-image-fx-outfile_features_df, path: /tmp/outputs/outfile_features_df/data}
-      - {name: construct-features-image-fx-outfile_patient_id_list, path: /tmp/outputs/outfile_patient_id_list/data}
+      - {name: construct-features-images-histomicstk-outfile_class_labels_pts_with_images,
+        path: /tmp/outputs/outfile_class_labels_pts_with_images/data}
+      - {name: construct-features-images-histomicstk-outfile_features_df, path: /tmp/outputs/outfile_features_df/data}
+      - {name: construct-features-images-histomicstk-outfile_patient_id_list, path: /tmp/outputs/outfile_patient_id_list/data}
+      - {name: construct-features-images-histomicstk-output_csv_test_indexes, path: /tmp/outputs/output_csv_test_indexes/data}
+      - {name: construct-features-images-histomicstk-output_csv_train_indexes, path: /tmp/outputs/output_csv_train_indexes/data}
     metadata:
       labels:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
@@ -233,25 +401,56 @@ spec:
           construction from images.", "implementation": {"container": {"args": ["--file-path-images",
           {"inputPath": "file_path_images"}, "--file-path-full-patient-id-list", {"inputPath":
           "file_path_full_patient_id_list"}, "--file-path-full-patient-class-labels",
-          {"inputPath": "file_path_full_patient_class_labels"}, "--outfile-features-df",
-          {"outputPath": "outfile_features_df"}, "--outfile-patient-id-list", {"outputPath":
-          "outfile_patient_id_list"}, "--outfile-class-labels-pts-with-images", {"outputPath":
-          "outfile_class_labels_pts_with_images"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''scikit-image==0.19.1''
-          ''numpy==1.21.2'' ''opencv-python-headless==4.5.5.62'' ''pandas==1.1.4''
-          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''scikit-image==0.19.1'' ''numpy==1.21.2'' ''opencv-python-headless==4.5.5.62''
-          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          {"inputPath": "file_path_full_patient_class_labels"}, "--param-test-set-size",
+          {"inputValue": "param_test_set_size"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--outfile-features-df", {"outputPath": "outfile_features_df"},
+          "--outfile-patient-id-list", {"outputPath": "outfile_patient_id_list"},
+          "--outfile-class-labels-pts-with-images", {"outputPath": "outfile_class_labels_pts_with_images"},
+          "--output-csv-train-indexes", {"outputPath": "output_csv_train_indexes"},
+          "--output-csv-test-indexes", {"outputPath": "output_csv_test_indexes"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''cytoolz==0.11.2'' ''conda==4.3.16''
+          ''large_image==1.14.3'' ''numpy==1.22.3'' ''pandas==1.4.2'' ''scikit-image==0.19.2''
+          ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''cytoolz==0.11.2'' ''conda==4.3.16''
+          ''large_image==1.14.3'' ''numpy==1.22.3'' ''pandas==1.4.2'' ''scikit-image==0.19.2''
+          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef construct_features_image_fx(file_path_images,\n                                file_path_full_patient_id_list,\n                                file_path_full_patient_class_labels,\n                                outfile_features_df,\n                                outfile_patient_id_list,\n                                outfile_class_labels_pts_with_images):\n    \"\"\"Feature
+          exist_ok=True)\n    return file_path\n\ndef construct_features_images_histomicstk(file_path_images,\n                                file_path_full_patient_id_list,\n                                file_path_full_patient_class_labels,\n                                param_test_set_size,\n                                param_random_seed,\n                                outfile_features_df,\n                                outfile_patient_id_list,\n                                outfile_class_labels_pts_with_images,\n                                output_csv_train_indexes,\n                                output_csv_test_indexes):\n    \"\"\"Feature
           construction from images. \n\n    Args:\n        file_path: A string containing
-          path to images (3-channel) in JSON obj.\n    \"\"\"\n\n    import json\n    from
+          path to images (3-channel) in JSON obj.\n    \"\"\"\n\n    #####\n    import
+          os\n    import pip\n    import subprocess\n    import sys\n    def install(package):\n        subprocess.check_call([sys.executable,
+          \"-m\", \"pip\", \"install\", package])\n    def uninstall(package):\n        subprocess.check_call([sys.executable,
+          \"-m\", \"pip\", \"uninstall\", \"-y\", package])            \n\n    import
+          conda.cli\n\n    subprocess.check_call([sys.executable, \"-m\", \"pip\",
+          \"install\", \"histomicstk==1.2.0\",\n                           \"--find-links\",
+          \"https://girder.github.io/large_image_wheels\"]) ## install with find-links\n\n    ##################################################################################\n    #\n    #
+          IMPT NOTE: need global import for packages installed programatically\n    #
+          https://stackoverflow.com/questions/59308781/python-module-not-importing-after-installing-programmatically\n    #\n    #          import
+          importlib\n    #          globals()[package] = importlib.import_module(package)\n    #
+          Note: python does not add it to path automatically, so need to add sys.path.append(site.getusersitepackages())\n    #    https://kubeflow-pipelines.readthedocs.io/en/stable/_modules/kfp/components/_python_op.html\n    #   \n    ##################################################################################\n\n    import
+          site\n    sys.path.append(site.getusersitepackages())\n    sys.path.append(''/root/.local/lib/python3.10/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.10/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.9/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.9/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.8/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.8/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.7/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.7/site-packages'')\n    sys.path.append(''/usr/local'')\n    sys.path.append(''/root/.local'')\n    sys.path.append(''/usr/local/bin'')\n    sys.path.append(''/root/.local/bin'')\n    print(sys.path)\n    print(os.listdir(''/usr/local/lib/python3.9/site-packages/histomicstk/segmentation/label/''))\n    import
+          histomicstk.segmentation.positive_pixel_count as ppc\n\n    import json\n    from
           collections import OrderedDict\n    import numpy as np\n    import pandas
-          as pd\n    from skimage.filters import prewitt_h,prewitt_v\n\n    # openCV
-          features\n    input_filestream_json = \"./output/json_10_images.json\"\n\n    with
-          open(file_path_images, \"r\") as read_file:\n        d_images_from_pl =
-          json.load(read_file)\n\n    d_features = OrderedDict()\n    d_features[\"mean_weight_raw_img\"]
+          as pd\n\n    import large_image\n    import skimage.io\n    from skimage.filters
+          import prewitt_h,prewitt_v\n    from sklearn.model_selection import train_test_split\n\n    #
+          open images\n\n    with open(file_path_images, \"r\") as read_file:\n        d_images_from_pl
+          = json.load(read_file)\n\n    # compute histomicstk features\n\n    # make
+          d_features and add all ppc-related features\n    d_features = OrderedDict()\n    d_features[''IntensitySumWeakPositive'']
+          = []\n    d_features[''IntensitySumPositive''] = []\n    d_features[''IntensitySumStrongPositive'']
+          = []\n    d_features[''IntensityAverage''] = []\n    d_features[''RatioStrongToTotal'']
+          = []\n    d_features[''IntensityAverageWeakAndPositive''] = []\n\n    ##
+          set template params\n    template_params = ppc.Parameters(\n    hue_value=0.05,\n    hue_width=9999,\n    saturation_minimum=0.05,\n    intensity_upper_limit=0.95,\n    intensity_weak_threshold=0.65,\n    intensity_strong_threshold=0.35,\n    intensity_lower_limit=0.05)\n\n    image_url
+          = (''https://data.kitware.com/api/v1/file/''\n                 ''598b71ee8d777f7d33e9c1d4/download'')  #
+          DAB.png\n    img_input_sample = skimage.io.imread(image_url)\n\n    ## compute
+          for each patient''s image\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for
+          ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
+          # use the first image for the pt\n                )\n        # feature extraction  \n        try:\n            stats,
+          label_image = ppc.count_image(img, template_params)\n        except: ##
+          Placeholder - use sample image\n            stats, label_image = ppc.count_image(img_input_sample,
+          template_params)\n\n        d_features[''IntensitySumWeakPositive''].append(stats.IntensitySumWeakPositive)\n        d_features[''IntensitySumPositive''].append(stats.IntensitySumPositive)\n        d_features[''IntensitySumStrongPositive''].append(stats.IntensitySumStrongPositive)\n        d_features[''IntensityAverage''].append(stats.IntensityAverage)\n        d_features[''RatioStrongToTotal''].append(stats.RatioStrongToTotal)\n        d_features[''IntensityAverageWeakAndPositive''].append(stats.IntensityAverageWeakAndPositive)\n\n    ##########################################\n\n    #
+          compute features and append to d_features - skimage\n    d_features[\"mean_weight_raw_img\"]
           = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"]
           = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID
           in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
@@ -273,38 +472,67 @@ spec:
           = pd.read_csv(file_path_full_patient_class_labels)\n    ## isolate patients
           that have images\n    df_slice_full_patient_id_list_have_images = df_full_patient_id_list[df_full_patient_id_list[''bcr_patient_barcode''].isin(df_patient_id_list[''bcr_patient_barcode''])]\n    idx_in_full_patient_id_list_have_images
           = df_slice_full_patient_id_list_have_images.index\n    df_class_labels_pts_with_images
-          = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n\n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,
+          = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n    ##
+          write outputs for class labels (y) and patient id list (just for these pts
+          that have images)\n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,
           header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,
-          header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Construct
-          features image fx'', description=''Feature construction from images.'')\n_parser.add_argument(\"--file-path-images\",
+          header=True, index=False)\n\n    ## create train test and store indexes,
+          using these clinical features\n    param_test_set_size_float = np.float64(param_test_set_size)\n    ###
+          set a valid value of 0.25 for test set size if needed\n    if param_test_set_size_float
+          < 0 or param_test_set_size_float > 1:\n        param_test_set_size_float
+          = 0.25    \n\n    param_random_seed_int = int(np.float64(param_random_seed))\n    X_train,
+          X_test, y_train, y_test = train_test_split(df_features_combined, df_class_labels_pts_with_images,
+          \n                                                    test_size=param_test_set_size_float,
+          \n                                                    random_state=param_random_seed_int)
+          # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:
+          \"index\"})\n    df_idx_train[''bcr_patient_barcode''] = df_slice_full_patient_id_list_have_images.iloc[X_train.index]\n    df_idx_test
+          = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
+          = df_slice_full_patient_id_list_have_images.iloc[X_test.index]\n    ## save
+          training and testing splits - to be used for instances where just these
+          image data are used in expt\n    df_idx_train.to_csv(output_csv_train_indexes,
+          index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Construct
+          features images histomicstk'', description=''Feature construction from images.'')\n_parser.add_argument(\"--file-path-images\",
           dest=\"file_path_images\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\",
           dest=\"file_path_full_patient_id_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-class-labels\",
-          dest=\"file_path_full_patient_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-features-df\",
+          dest=\"file_path_full_patient_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-test-set-size\",
+          dest=\"param_test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-features-df\",
           dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\",
           dest=\"outfile_patient_id_list\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\",
           dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\",
+          dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\",
+          dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = construct_features_image_fx(**_parsed_args)\n"], "image": "python:3.7"}},
+          = construct_features_images_histomicstk(**_parsed_args)\n"], "image": "python:3.9"}},
           "inputs": [{"name": "file_path_images", "type": "JSON"}, {"name": "file_path_full_patient_id_list",
           "type": "CSV"}, {"name": "file_path_full_patient_class_labels", "type":
-          "CSV"}], "name": "Construct features image fx", "outputs": [{"name": "outfile_features_df",
-          "type": "CSV"}, {"name": "outfile_patient_id_list", "type": "CSV"}, {"name":
-          "outfile_class_labels_pts_with_images", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "CSV"}, {"name": "param_test_set_size", "type": "String"}, {"name": "param_random_seed",
+          "type": "String"}], "name": "Construct features images histomicstk", "outputs":
+          [{"name": "outfile_features_df", "type": "CSV"}, {"name": "outfile_patient_id_list",
+          "type": "CSV"}, {"name": "outfile_class_labels_pts_with_images", "type":
+          "CSV"}, {"name": "output_csv_train_indexes", "type": "CSV"}, {"name": "output_csv_test_indexes",
+          "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed":
+          "{{inputs.parameters.param_random_seed}}", "param_test_set_size": "{{inputs.parameters.test_set_size}}"}'}
   - name: create-model-inputs
     container:
       args: [--file-path-features, /tmp/inputs/file_path_features/data, --file-path-class-labels,
         /tmp/inputs/file_path_class_labels/data, --test-set-size, '{{inputs.parameters.test_set_size}}',
+        --param-random-seed, '{{inputs.parameters.param_random_seed}}', --file-path-train-indexes,
+        /tmp/inputs/file_path_train_indexes/data, --file-path-test-indexes, /tmp/inputs/file_path_test_indexes/data,
         --output-X-train, /tmp/outputs/output_X_train/data, --output-X-test, /tmp/outputs/output_X_test/data,
         --output-y-train, /tmp/outputs/output_y_train/data, --output-y-test, /tmp/outputs/output_y_test/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
-        --user) && "$0" "$@"
+        'pandas==1.4.2' 'scikit-learn==1.0.2' 'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1
+        python3 -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -320,6 +548,9 @@ spec:
         def create_model_inputs(file_path_features,
                                 file_path_class_labels,
                                 test_set_size,
+                                param_random_seed,
+                                file_path_train_indexes,
+                                file_path_test_indexes,
                                 output_X_train,
                                 output_X_test,
                                 output_y_train,
@@ -340,13 +571,16 @@ spec:
             X = pd.read_csv(filepath_or_buffer=file_path_features)
             y = pd.read_csv(filepath_or_buffer=file_path_class_labels)
 
-            try:
-                test_set_size_for_model_training = float(test_set_size)
-            except:
-                test_set_size_for_model_training = 0.25
-            if test_set_size_for_model_training <= 0 or test_set_size_for_model_training >= 1:
-                test_set_size_for_model_training = 0.25
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)
+            # load train/test indexes - computed with combine feature domains task
+            df_train_indexes = pd.read_csv(file_path_train_indexes)
+            df_test_indexes = pd.read_csv(file_path_test_indexes)
+            nparr_train_indexes = np.array(df_train_indexes['index'])
+            nparr_test_indexes = np.array(df_test_indexes['index'])
+
+            X_train = X.iloc[nparr_train_indexes]
+            y_train = y.iloc[nparr_train_indexes]
+            X_test = X.iloc[nparr_test_indexes]
+            y_test = y.iloc[nparr_test_indexes]
 
             X_train.to_csv(output_X_train, header=True, index=False)
             X_test.to_csv(output_X_test, header=True, index=False)
@@ -358,6 +592,9 @@ spec:
         _parser.add_argument("--file-path-features", dest="file_path_features", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--file-path-class-labels", dest="file_path_class_labels", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--test-set-size", dest="test_set_size", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--param-random-seed", dest="param_random_seed", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-train-indexes", dest="file_path_train_indexes", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-test-indexes", dest="file_path_test_indexes", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-train", dest="output_X_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-test", dest="output_X_test", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-y-train", dest="output_y_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
@@ -365,13 +602,16 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = create_model_inputs(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       parameters:
+      - {name: param_random_seed}
       - {name: test_set_size}
       artifacts:
       - {name: get-dummies-output_csv_target, path: /tmp/inputs/file_path_class_labels/data}
       - {name: scale-df-output_csv, path: /tmp/inputs/file_path_features/data}
+      - {name: get-dummies-output_csv_test_indexes, path: /tmp/inputs/file_path_test_indexes/data}
+      - {name: get-dummies-output_csv_train_indexes, path: /tmp/inputs/file_path_train_indexes/data}
     outputs:
       artifacts:
       - {name: create-model-inputs-output_X_test, path: /tmp/outputs/output_X_test/data}
@@ -387,34 +627,41 @@ spec:
           train and test sets", "implementation": {"container": {"args": ["--file-path-features",
           {"inputPath": "file_path_features"}, "--file-path-class-labels", {"inputPath":
           "file_path_class_labels"}, "--test-set-size", {"inputValue": "test_set_size"},
-          "--output-X-train", {"outputPath": "output_X_train"}, "--output-X-test",
-          {"outputPath": "output_X_test"}, "--output-y-train", {"outputPath": "output_y_train"},
-          "--output-y-test", {"outputPath": "output_y_test"}], "command": ["sh", "-c",
-          "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          "--param-random-seed", {"inputValue": "param_random_seed"}, "--file-path-train-indexes",
+          {"inputPath": "file_path_train_indexes"}, "--file-path-test-indexes", {"inputPath":
+          "file_path_test_indexes"}, "--output-X-train", {"outputPath": "output_X_train"},
+          "--output-X-test", {"outputPath": "output_X_test"}, "--output-y-train",
+          {"outputPath": "output_y_train"}, "--output-y-test", {"outputPath": "output_y_test"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''numpy''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
+          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        param_random_seed,\n                        file_path_train_indexes,\n                        file_path_test_indexes,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
           train and test sets\n\n    Args:\n        file_path_features: A string containing
           path / pipeline component output\n        file_path_class_labels: A string
           containing path to data / pipeline component output\n        test_set_size:
           [optional, default=0.25] proportion to use for the test set\n    \"\"\"\n    import
           numpy as np\n\n    import pandas as pd\n    from sklearn import datasets\n    from
           sklearn.model_selection import train_test_split\n\n    X = pd.read_csv(filepath_or_buffer=file_path_features)\n    y
-          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    try:\n        test_set_size_for_model_training
-          = float(test_set_size)\n    except:\n        test_set_size_for_model_training
-          = 0.25\n    if test_set_size_for_model_training <= 0 or test_set_size_for_model_training
-          >= 1:\n        test_set_size_for_model_training = 0.25\n    X_train, X_test,
-          y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)\n\n    X_train.to_csv(output_X_train,
+          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    # load train/test
+          indexes - computed with combine feature domains task\n    df_train_indexes
+          = pd.read_csv(file_path_train_indexes)\n    df_test_indexes = pd.read_csv(file_path_test_indexes)\n    nparr_train_indexes
+          = np.array(df_train_indexes[''index''])\n    nparr_test_indexes = np.array(df_test_indexes[''index''])\n\n    X_train
+          = X.iloc[nparr_train_indexes]\n    y_train = y.iloc[nparr_train_indexes]\n    X_test
+          = X.iloc[nparr_test_indexes]\n    y_test = y.iloc[nparr_test_indexes]\n\n    X_train.to_csv(output_X_train,
           header=True, index=False)\n    X_test.to_csv(output_X_test, header=True,
           index=False)\n    y_train.to_csv(output_y_train, header=True, index=False)\n    y_test.to_csv(output_y_test,
           header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Create
           model inputs'', description=''Create train and test sets'')\n_parser.add_argument(\"--file-path-features\",
           dest=\"file_path_features\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-class-labels\",
           dest=\"file_path_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--test-set-size\",
-          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
+          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-train-indexes\",
+          dest=\"file_path_train_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-test-indexes\",
+          dest=\"file_path_test_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
           dest=\"output_X_train\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-test\", dest=\"output_X_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-train\",
@@ -422,29 +669,33 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-test\", dest=\"output_y_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = create_model_inputs(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"description": "A string containing
+          "image": "python:3.9"}}, "inputs": [{"description": "A string containing
           path / pipeline component output", "name": "file_path_features", "type":
           "CSV"}, {"description": "A string containing path to data / pipeline component
           output", "name": "file_path_class_labels", "type": "CSV"}, {"description":
           "[optional, default=0.25] proportion to use for the test set", "name": "test_set_size",
-          "type": "String"}], "name": "Create model inputs", "outputs": [{"name":
-          "output_X_train", "type": "CSV"}, {"name": "output_X_test", "type": "CSV"},
-          {"name": "output_y_train", "type": "CSV"}, {"name": "output_y_test", "type":
-          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"test_set_size":
-          "{{inputs.parameters.test_set_size}}"}'}
+          "type": "String"}, {"name": "param_random_seed", "type": "String"}, {"name":
+          "file_path_train_indexes", "type": "CSV"}, {"name": "file_path_test_indexes",
+          "type": "CSV"}], "name": "Create model inputs", "outputs": [{"name": "output_X_train",
+          "type": "CSV"}, {"name": "output_X_test", "type": "CSV"}, {"name": "output_y_train",
+          "type": "CSV"}, {"name": "output_y_test", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}",
+          "test_set_size": "{{inputs.parameters.test_set_size}}"}'}
   - name: create-model-inputs-2
     container:
       args: [--file-path-features, /tmp/inputs/file_path_features/data, --file-path-class-labels,
         /tmp/inputs/file_path_class_labels/data, --test-set-size, '{{inputs.parameters.test_set_size}}',
+        --param-random-seed, '{{inputs.parameters.param_random_seed}}', --file-path-train-indexes,
+        /tmp/inputs/file_path_train_indexes/data, --file-path-test-indexes, /tmp/inputs/file_path_test_indexes/data,
         --output-X-train, /tmp/outputs/output_X_train/data, --output-X-test, /tmp/outputs/output_X_test/data,
         --output-y-train, /tmp/outputs/output_y_train/data, --output-y-test, /tmp/outputs/output_y_test/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
-        --user) && "$0" "$@"
+        'pandas==1.4.2' 'scikit-learn==1.0.2' 'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1
+        python3 -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -460,6 +711,9 @@ spec:
         def create_model_inputs(file_path_features,
                                 file_path_class_labels,
                                 test_set_size,
+                                param_random_seed,
+                                file_path_train_indexes,
+                                file_path_test_indexes,
                                 output_X_train,
                                 output_X_test,
                                 output_y_train,
@@ -480,13 +734,16 @@ spec:
             X = pd.read_csv(filepath_or_buffer=file_path_features)
             y = pd.read_csv(filepath_or_buffer=file_path_class_labels)
 
-            try:
-                test_set_size_for_model_training = float(test_set_size)
-            except:
-                test_set_size_for_model_training = 0.25
-            if test_set_size_for_model_training <= 0 or test_set_size_for_model_training >= 1:
-                test_set_size_for_model_training = 0.25
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)
+            # load train/test indexes - computed with combine feature domains task
+            df_train_indexes = pd.read_csv(file_path_train_indexes)
+            df_test_indexes = pd.read_csv(file_path_test_indexes)
+            nparr_train_indexes = np.array(df_train_indexes['index'])
+            nparr_test_indexes = np.array(df_test_indexes['index'])
+
+            X_train = X.iloc[nparr_train_indexes]
+            y_train = y.iloc[nparr_train_indexes]
+            X_test = X.iloc[nparr_test_indexes]
+            y_test = y.iloc[nparr_test_indexes]
 
             X_train.to_csv(output_X_train, header=True, index=False)
             X_test.to_csv(output_X_test, header=True, index=False)
@@ -498,6 +755,9 @@ spec:
         _parser.add_argument("--file-path-features", dest="file_path_features", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--file-path-class-labels", dest="file_path_class_labels", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--test-set-size", dest="test_set_size", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--param-random-seed", dest="param_random_seed", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-train-indexes", dest="file_path_train_indexes", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-test-indexes", dest="file_path_test_indexes", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-train", dest="output_X_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-test", dest="output_X_test", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-y-train", dest="output_y_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
@@ -505,13 +765,17 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = create_model_inputs(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       parameters:
+      - {name: param_random_seed}
       - {name: test_set_size}
       artifacts:
-      - {name: construct-features-image-fx-outfile_class_labels_pts_with_images, path: /tmp/inputs/file_path_class_labels/data}
+      - {name: construct-features-images-histomicstk-outfile_class_labels_pts_with_images,
+        path: /tmp/inputs/file_path_class_labels/data}
       - {name: scale-df-2-output_csv, path: /tmp/inputs/file_path_features/data}
+      - {name: construct-features-images-histomicstk-output_csv_test_indexes, path: /tmp/inputs/file_path_test_indexes/data}
+      - {name: construct-features-images-histomicstk-output_csv_train_indexes, path: /tmp/inputs/file_path_train_indexes/data}
     outputs:
       artifacts:
       - {name: create-model-inputs-2-output_X_test, path: /tmp/outputs/output_X_test/data}
@@ -527,34 +791,41 @@ spec:
           train and test sets", "implementation": {"container": {"args": ["--file-path-features",
           {"inputPath": "file_path_features"}, "--file-path-class-labels", {"inputPath":
           "file_path_class_labels"}, "--test-set-size", {"inputValue": "test_set_size"},
-          "--output-X-train", {"outputPath": "output_X_train"}, "--output-X-test",
-          {"outputPath": "output_X_test"}, "--output-y-train", {"outputPath": "output_y_train"},
-          "--output-y-test", {"outputPath": "output_y_test"}], "command": ["sh", "-c",
-          "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          "--param-random-seed", {"inputValue": "param_random_seed"}, "--file-path-train-indexes",
+          {"inputPath": "file_path_train_indexes"}, "--file-path-test-indexes", {"inputPath":
+          "file_path_test_indexes"}, "--output-X-train", {"outputPath": "output_X_train"},
+          "--output-X-test", {"outputPath": "output_X_test"}, "--output-y-train",
+          {"outputPath": "output_y_train"}, "--output-y-test", {"outputPath": "output_y_test"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''numpy''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
+          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        param_random_seed,\n                        file_path_train_indexes,\n                        file_path_test_indexes,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
           train and test sets\n\n    Args:\n        file_path_features: A string containing
           path / pipeline component output\n        file_path_class_labels: A string
           containing path to data / pipeline component output\n        test_set_size:
           [optional, default=0.25] proportion to use for the test set\n    \"\"\"\n    import
           numpy as np\n\n    import pandas as pd\n    from sklearn import datasets\n    from
           sklearn.model_selection import train_test_split\n\n    X = pd.read_csv(filepath_or_buffer=file_path_features)\n    y
-          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    try:\n        test_set_size_for_model_training
-          = float(test_set_size)\n    except:\n        test_set_size_for_model_training
-          = 0.25\n    if test_set_size_for_model_training <= 0 or test_set_size_for_model_training
-          >= 1:\n        test_set_size_for_model_training = 0.25\n    X_train, X_test,
-          y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)\n\n    X_train.to_csv(output_X_train,
+          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    # load train/test
+          indexes - computed with combine feature domains task\n    df_train_indexes
+          = pd.read_csv(file_path_train_indexes)\n    df_test_indexes = pd.read_csv(file_path_test_indexes)\n    nparr_train_indexes
+          = np.array(df_train_indexes[''index''])\n    nparr_test_indexes = np.array(df_test_indexes[''index''])\n\n    X_train
+          = X.iloc[nparr_train_indexes]\n    y_train = y.iloc[nparr_train_indexes]\n    X_test
+          = X.iloc[nparr_test_indexes]\n    y_test = y.iloc[nparr_test_indexes]\n\n    X_train.to_csv(output_X_train,
           header=True, index=False)\n    X_test.to_csv(output_X_test, header=True,
           index=False)\n    y_train.to_csv(output_y_train, header=True, index=False)\n    y_test.to_csv(output_y_test,
           header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Create
           model inputs'', description=''Create train and test sets'')\n_parser.add_argument(\"--file-path-features\",
           dest=\"file_path_features\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-class-labels\",
           dest=\"file_path_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--test-set-size\",
-          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
+          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-train-indexes\",
+          dest=\"file_path_train_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-test-indexes\",
+          dest=\"file_path_test_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
           dest=\"output_X_train\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-test\", dest=\"output_X_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-train\",
@@ -562,29 +833,33 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-test\", dest=\"output_y_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = create_model_inputs(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"description": "A string containing
+          "image": "python:3.9"}}, "inputs": [{"description": "A string containing
           path / pipeline component output", "name": "file_path_features", "type":
           "CSV"}, {"description": "A string containing path to data / pipeline component
           output", "name": "file_path_class_labels", "type": "CSV"}, {"description":
           "[optional, default=0.25] proportion to use for the test set", "name": "test_set_size",
-          "type": "String"}], "name": "Create model inputs", "outputs": [{"name":
-          "output_X_train", "type": "CSV"}, {"name": "output_X_test", "type": "CSV"},
-          {"name": "output_y_train", "type": "CSV"}, {"name": "output_y_test", "type":
-          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"test_set_size":
-          "{{inputs.parameters.test_set_size}}"}'}
+          "type": "String"}, {"name": "param_random_seed", "type": "String"}, {"name":
+          "file_path_train_indexes", "type": "CSV"}, {"name": "file_path_test_indexes",
+          "type": "CSV"}], "name": "Create model inputs", "outputs": [{"name": "output_X_train",
+          "type": "CSV"}, {"name": "output_X_test", "type": "CSV"}, {"name": "output_y_train",
+          "type": "CSV"}, {"name": "output_y_test", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}",
+          "test_set_size": "{{inputs.parameters.test_set_size}}"}'}
   - name: create-model-inputs-3
     container:
       args: [--file-path-features, /tmp/inputs/file_path_features/data, --file-path-class-labels,
         /tmp/inputs/file_path_class_labels/data, --test-set-size, '{{inputs.parameters.test_set_size}}',
+        --param-random-seed, '{{inputs.parameters.param_random_seed}}', --file-path-train-indexes,
+        /tmp/inputs/file_path_train_indexes/data, --file-path-test-indexes, /tmp/inputs/file_path_test_indexes/data,
         --output-X-train, /tmp/outputs/output_X_train/data, --output-X-test, /tmp/outputs/output_X_test/data,
         --output-y-train, /tmp/outputs/output_y_train/data, --output-y-test, /tmp/outputs/output_y_test/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
-        --user) && "$0" "$@"
+        'pandas==1.4.2' 'scikit-learn==1.0.2' 'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1
+        python3 -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -600,6 +875,9 @@ spec:
         def create_model_inputs(file_path_features,
                                 file_path_class_labels,
                                 test_set_size,
+                                param_random_seed,
+                                file_path_train_indexes,
+                                file_path_test_indexes,
                                 output_X_train,
                                 output_X_test,
                                 output_y_train,
@@ -620,13 +898,16 @@ spec:
             X = pd.read_csv(filepath_or_buffer=file_path_features)
             y = pd.read_csv(filepath_or_buffer=file_path_class_labels)
 
-            try:
-                test_set_size_for_model_training = float(test_set_size)
-            except:
-                test_set_size_for_model_training = 0.25
-            if test_set_size_for_model_training <= 0 or test_set_size_for_model_training >= 1:
-                test_set_size_for_model_training = 0.25
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)
+            # load train/test indexes - computed with combine feature domains task
+            df_train_indexes = pd.read_csv(file_path_train_indexes)
+            df_test_indexes = pd.read_csv(file_path_test_indexes)
+            nparr_train_indexes = np.array(df_train_indexes['index'])
+            nparr_test_indexes = np.array(df_test_indexes['index'])
+
+            X_train = X.iloc[nparr_train_indexes]
+            y_train = y.iloc[nparr_train_indexes]
+            X_test = X.iloc[nparr_test_indexes]
+            y_test = y.iloc[nparr_test_indexes]
 
             X_train.to_csv(output_X_train, header=True, index=False)
             X_test.to_csv(output_X_test, header=True, index=False)
@@ -638,6 +919,9 @@ spec:
         _parser.add_argument("--file-path-features", dest="file_path_features", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--file-path-class-labels", dest="file_path_class_labels", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--test-set-size", dest="test_set_size", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--param-random-seed", dest="param_random_seed", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-train-indexes", dest="file_path_train_indexes", type=str, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("--file-path-test-indexes", dest="file_path_test_indexes", type=str, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-train", dest="output_X_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-X-test", dest="output_X_test", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
         _parser.add_argument("--output-y-train", dest="output_y_train", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)
@@ -645,13 +929,16 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = create_model_inputs(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       parameters:
+      - {name: param_random_seed}
       - {name: test_set_size}
       artifacts:
       - {name: get-dummies-output_csv_target, path: /tmp/inputs/file_path_class_labels/data}
       - {name: scale-df-3-output_csv, path: /tmp/inputs/file_path_features/data}
+      - {name: combine-feature-domains-output_csv_test_indexes, path: /tmp/inputs/file_path_test_indexes/data}
+      - {name: combine-feature-domains-output_csv_train_indexes, path: /tmp/inputs/file_path_train_indexes/data}
     outputs:
       artifacts:
       - {name: create-model-inputs-3-output_X_test, path: /tmp/outputs/output_X_test/data}
@@ -667,34 +954,41 @@ spec:
           train and test sets", "implementation": {"container": {"args": ["--file-path-features",
           {"inputPath": "file_path_features"}, "--file-path-class-labels", {"inputPath":
           "file_path_class_labels"}, "--test-set-size", {"inputValue": "test_set_size"},
-          "--output-X-train", {"outputPath": "output_X_train"}, "--output-X-test",
-          {"outputPath": "output_X_test"}, "--output-y-train", {"outputPath": "output_y_train"},
-          "--output-y-test", {"outputPath": "output_y_test"}], "command": ["sh", "-c",
-          "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
-          ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          "--param-random-seed", {"inputValue": "param_random_seed"}, "--file-path-train-indexes",
+          {"inputPath": "file_path_train_indexes"}, "--file-path-test-indexes", {"inputPath":
+          "file_path_test_indexes"}, "--output-X-train", {"outputPath": "output_X_train"},
+          "--output-X-test", {"outputPath": "output_X_test"}, "--output-y-train",
+          {"outputPath": "output_y_train"}, "--output-y-test", {"outputPath": "output_y_test"}],
+          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
+          install --quiet --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''numpy''
+          --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
+          exist_ok=True)\n    return file_path\n\ndef create_model_inputs(file_path_features,\n                        file_path_class_labels,\n                        test_set_size,\n                        param_random_seed,\n                        file_path_train_indexes,\n                        file_path_test_indexes,\n                        output_X_train,\n                        output_X_test,\n                        output_y_train,\n                        output_y_test):\n    \"\"\"Create
           train and test sets\n\n    Args:\n        file_path_features: A string containing
           path / pipeline component output\n        file_path_class_labels: A string
           containing path to data / pipeline component output\n        test_set_size:
           [optional, default=0.25] proportion to use for the test set\n    \"\"\"\n    import
           numpy as np\n\n    import pandas as pd\n    from sklearn import datasets\n    from
           sklearn.model_selection import train_test_split\n\n    X = pd.read_csv(filepath_or_buffer=file_path_features)\n    y
-          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    try:\n        test_set_size_for_model_training
-          = float(test_set_size)\n    except:\n        test_set_size_for_model_training
-          = 0.25\n    if test_set_size_for_model_training <= 0 or test_set_size_for_model_training
-          >= 1:\n        test_set_size_for_model_training = 0.25\n    X_train, X_test,
-          y_train, y_test = train_test_split(X, y, test_size=test_set_size_for_model_training)\n\n    X_train.to_csv(output_X_train,
+          = pd.read_csv(filepath_or_buffer=file_path_class_labels)\n\n    # load train/test
+          indexes - computed with combine feature domains task\n    df_train_indexes
+          = pd.read_csv(file_path_train_indexes)\n    df_test_indexes = pd.read_csv(file_path_test_indexes)\n    nparr_train_indexes
+          = np.array(df_train_indexes[''index''])\n    nparr_test_indexes = np.array(df_test_indexes[''index''])\n\n    X_train
+          = X.iloc[nparr_train_indexes]\n    y_train = y.iloc[nparr_train_indexes]\n    X_test
+          = X.iloc[nparr_test_indexes]\n    y_test = y.iloc[nparr_test_indexes]\n\n    X_train.to_csv(output_X_train,
           header=True, index=False)\n    X_test.to_csv(output_X_test, header=True,
           index=False)\n    y_train.to_csv(output_y_train, header=True, index=False)\n    y_test.to_csv(output_y_test,
           header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Create
           model inputs'', description=''Create train and test sets'')\n_parser.add_argument(\"--file-path-features\",
           dest=\"file_path_features\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-class-labels\",
           dest=\"file_path_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--test-set-size\",
-          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
+          dest=\"test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-train-indexes\",
+          dest=\"file_path_train_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-test-indexes\",
+          dest=\"file_path_test_indexes\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-train\",
           dest=\"output_X_train\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-X-test\", dest=\"output_X_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-train\",
@@ -702,16 +996,18 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-y-test\", dest=\"output_y_test\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = create_model_inputs(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"description": "A string containing
+          "image": "python:3.9"}}, "inputs": [{"description": "A string containing
           path / pipeline component output", "name": "file_path_features", "type":
           "CSV"}, {"description": "A string containing path to data / pipeline component
           output", "name": "file_path_class_labels", "type": "CSV"}, {"description":
           "[optional, default=0.25] proportion to use for the test set", "name": "test_set_size",
-          "type": "String"}], "name": "Create model inputs", "outputs": [{"name":
-          "output_X_train", "type": "CSV"}, {"name": "output_X_test", "type": "CSV"},
-          {"name": "output_y_train", "type": "CSV"}, {"name": "output_y_test", "type":
-          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"test_set_size":
-          "{{inputs.parameters.test_set_size}}"}'}
+          "type": "String"}, {"name": "param_random_seed", "type": "String"}, {"name":
+          "file_path_train_indexes", "type": "CSV"}, {"name": "file_path_test_indexes",
+          "type": "CSV"}], "name": "Create model inputs", "outputs": [{"name": "output_X_train",
+          "type": "CSV"}, {"name": "output_X_test", "type": "CSV"}, {"name": "output_y_train",
+          "type": "CSV"}, {"name": "output_y_test", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}",
+          "test_set_size": "{{inputs.parameters.test_set_size}}"}'}
   - name: download-data-kfp-sdk-v2
     container:
       args: []
@@ -877,11 +1173,13 @@ spec:
     container:
       args: [--file, /tmp/inputs/file/data, --file-path-patient-list, /tmp/inputs/file_path_patient_list/data,
         --class-label-colname, '{{inputs.parameters.user_input_class_label_column_name}}',
-        --s-colnames-to-exclude, '{{inputs.parameters.s_colnames_to_exclude}}', --output-csv-features,
-        /tmp/outputs/output_csv_features/data, --output-csv-target, /tmp/outputs/output_csv_target/data,
-        --output-csv-target-class-labels, /tmp/outputs/output_csv_target_class_labels/data,
+        --s-colnames-to-exclude, '{{inputs.parameters.s_colnames_to_exclude}}', --param-test-set-size,
+        '{{inputs.parameters.test_set_size}}', --param-random-seed, '{{inputs.parameters.param_random_seed}}',
+        --output-csv-features, /tmp/outputs/output_csv_features/data, --output-csv-target,
+        /tmp/outputs/output_csv_target/data, --output-csv-target-class-labels, /tmp/outputs/output_csv_target_class_labels/data,
         --output-csv-feature-list, /tmp/outputs/output_csv_feature_list/data, --output-csv-patient-list-filtered,
-        /tmp/outputs/output_csv_patient_list_filtered/data]
+        /tmp/outputs/output_csv_patient_list_filtered/data, --output-csv-train-indexes,
+        /tmp/outputs/output_csv_train_indexes/data, --output-csv-test-indexes, /tmp/outputs/output_csv_test_indexes/data]
       command:
       - sh
       - -c
@@ -899,25 +1197,28 @@ spec:
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef get_dummies(file_path,\n                file_path_patient_list,\n  \
         \              class_label_colname,\n                s_colnames_to_exclude,\n\
+        \                param_test_set_size,\n                param_random_seed,\n\
         \                output_csv_features,\n                output_csv_target,\n\
         \                output_csv_target_class_labels,\n                output_csv_feature_list,\n\
-        \                output_csv_patient_list_filtered):\n    \"\"\"Distribute\
-        \ categorical features into separate features.\n        Input: CSV with categorical\
-        \ (and numeric) features. Assume last \n            feature is target label.\
-        \ \n        Output: CSV with categorical features separated into dummies.\n\
-        \n    Args:\n        file_path: A string containing path to input data.\n\
-        \        output_csv: A string containing path to processed data.\n    \"\"\
-        \"\n    import glob\n    import numpy as np\n    import pandas as pd\n   \
-        \ from sklearn import preprocessing\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\
-        \    l_col_names = list(df.columns)\n\n    # isolate column for target class\
-        \ label; if null, use last column\n    target_class_label = class_label_colname\
-        \ if str(class_label_colname) != '' else l_col_names[-1]\n    ## remove all\
-        \ rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n\
-        \    ## remove patients from master list whose data got removed because class\
-        \ label col was NaN\n    df_patient_list = pd.read_csv(file_path_patient_list)\n\
-        \    df_patient_list_filtered = df_patient_list.loc[df.index]\n\n    ## extract\
-        \ target class column\n    df_target_raw = df[target_class_label] # from input\
-        \ parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
+        \                output_csv_patient_list_filtered,\n                output_csv_train_indexes,\n\
+        \                output_csv_test_indexes):\n    \"\"\"Distribute categorical\
+        \ features into separate features.\n        Input: CSV with categorical (and\
+        \ numeric) features. Assume last \n            feature is target label. \n\
+        \        Output: CSV with categorical features separated into dummies.\n\n\
+        \    Args:\n        file_path: A string containing path to input data.\n \
+        \       output_csv: A string containing path to processed data.\n    \"\"\"\
+        \n    import glob\n    import numpy as np\n    import pandas as pd\n    from\
+        \ sklearn import preprocessing\n    from sklearn.model_selection import train_test_split\n\
+        \n    df = pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names = list(df.columns)\n\
+        \n    # isolate column for target class label; if null, use last column\n\
+        \    target_class_label = class_label_colname if str(class_label_colname)\
+        \ != '' else l_col_names[-1]\n    ## remove all rows where class label col\
+        \ is NaN\n    df = df.dropna(subset=[target_class_label])\n    ## remove patients\
+        \ from master list whose data got removed because class label col was NaN\n\
+        \    df_patient_list = pd.read_csv(file_path_patient_list)\n    df_patient_list_filtered\
+        \ = df_patient_list.loc[df.index]\n\n    ## extract target class column\n\
+        \    df_target_raw = df[target_class_label] # from input parameter\n    lb\
+        \ = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))\
         \ # fit to data for target class to find all classes\n    target_class_label_names\
         \ = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\
         \n    df_target_class_labels = pd.DataFrame({'class': target_class_label_names})\n\
@@ -932,16 +1233,33 @@ spec:
         \ after dummies are removed\n    if str(s_colnames_to_exclude) != '':\n  \
         \      l_colnames_to_exclude = s_colnames_to_exclude.split(',')\n        l_colnames_in_this_df_to_exclude\
         \ = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features\
-        \ = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n\
-        \    df_features_dummies = pd.get_dummies(df_features)\n\n    # feature list\n\
-        \    l_features = df_features_dummies.columns\n    df_feature_list = pd.DataFrame({'feature':\
-        \ l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
+        \ = df_features.drop(l_colnames_to_exclude, axis = 1).reset_index() # reset_index\
+        \ becauase need to get indexes for train/test later on data with rows filtered\
+        \ out\n\n    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\
+        \n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list\
+        \ = pd.DataFrame({'feature': l_features})\n\n    # create train test and store\
+        \ indexes, using these clinical features\n    param_test_set_size_float =\
+        \ np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for\
+        \ test set size if needed\n    if param_test_set_size_float < 0 or param_test_set_size_float\
+        \ > 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int\
+        \ = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test\
+        \ = train_test_split(df_features_dummies, df_target, \n                  \
+        \                                  test_size=param_test_set_size_float, \n\
+        \                                                    random_state=param_random_seed_int)\
+        \ # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:\
+        \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_train.index]\n\
+        \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
+        \    df_idx_test['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_test.index]\n\
+        \n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
         \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
         \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
         \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
         \ index = True, header = False)\n    ### save new filtered patient list\n\
         \    df_patient_list_filtered.to_csv(output_csv_patient_list_filtered, header=True,\
-        \ index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
+        \ index=False)\n    ### save training and testing splits - to use with all\
+        \ fused feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,\
+        \ index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Get\
         \ dummies', description='Distribute categorical features into separate features.')\n\
         _parser.add_argument(\"--file\", dest=\"file_path\", type=str, required=True,\
         \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-patient-list\"\
@@ -949,9 +1267,12 @@ spec:
         _parser.add_argument(\"--class-label-colname\", dest=\"class_label_colname\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
         --s-colnames-to-exclude\", dest=\"s_colnames_to_exclude\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\"\
-        , dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\"\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-test-set-size\"\
+        , dest=\"param_test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--param-random-seed\", dest=\"param_random_seed\",\
+        \ type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-csv-features\", dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\"\
         , dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target-class-labels\"\
         , dest=\"output_csv_target_class_labels\", type=_make_parent_dirs_and_return_path,\
@@ -959,12 +1280,18 @@ spec:
         , dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-patient-list-filtered\"\
         , dest=\"output_csv_patient_list_filtered\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\"\
+        , dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\"\
+        , dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = get_dummies(**_parsed_args)\n"
       image: python:3.7
     inputs:
       parameters:
+      - {name: param_random_seed}
       - {name: s_colnames_to_exclude}
+      - {name: test_set_size}
       - {name: user_input_class_label_column_name}
       artifacts:
       - {name: process-data-tarball-output_master_df, path: /tmp/inputs/file/data}
@@ -976,6 +1303,8 @@ spec:
       - {name: get-dummies-output_csv_patient_list_filtered, path: /tmp/outputs/output_csv_patient_list_filtered/data}
       - {name: get-dummies-output_csv_target, path: /tmp/outputs/output_csv_target/data}
       - {name: get-dummies-output_csv_target_class_labels, path: /tmp/outputs/output_csv_target_class_labels/data}
+      - {name: get-dummies-output_csv_test_indexes, path: /tmp/outputs/output_csv_test_indexes/data}
+      - {name: get-dummies-output_csv_train_indexes, path: /tmp/outputs/output_csv_train_indexes/data}
     metadata:
       labels:
         pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
@@ -985,33 +1314,37 @@ spec:
           categorical features into separate features.", "implementation": {"container":
           {"args": ["--file", {"inputPath": "file"}, "--file-path-patient-list", {"inputPath":
           "file_path_patient_list"}, "--class-label-colname", {"inputValue": "class_label_colname"},
-          "--s-colnames-to-exclude", {"inputValue": "s_colnames_to_exclude"}, "--output-csv-features",
-          {"outputPath": "output_csv_features"}, "--output-csv-target", {"outputPath":
-          "output_csv_target"}, "--output-csv-target-class-labels", {"outputPath":
-          "output_csv_target_class_labels"}, "--output-csv-feature-list", {"outputPath":
-          "output_csv_feature_list"}, "--output-csv-patient-list-filtered", {"outputPath":
-          "output_csv_patient_list_filtered"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
+          "--s-colnames-to-exclude", {"inputValue": "s_colnames_to_exclude"}, "--param-test-set-size",
+          {"inputValue": "param_test_set_size"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--output-csv-features", {"outputPath": "output_csv_features"},
+          "--output-csv-target", {"outputPath": "output_csv_target"}, "--output-csv-target-class-labels",
+          {"outputPath": "output_csv_target_class_labels"}, "--output-csv-feature-list",
+          {"outputPath": "output_csv_feature_list"}, "--output-csv-patient-list-filtered",
+          {"outputPath": "output_csv_patient_list_filtered"}, "--output-csv-train-indexes",
+          {"outputPath": "output_csv_train_indexes"}, "--output-csv-test-indexes",
+          {"outputPath": "output_csv_test_indexes"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
           ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
           install --quiet --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2''
           --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                file_path_patient_list,\n                class_label_colname,\n                s_colnames_to_exclude,\n                output_csv_features,\n                output_csv_target,\n                output_csv_target_class_labels,\n                output_csv_feature_list,\n                output_csv_patient_list_filtered):\n    \"\"\"Distribute
+          exist_ok=True)\n    return file_path\n\ndef get_dummies(file_path,\n                file_path_patient_list,\n                class_label_colname,\n                s_colnames_to_exclude,\n                param_test_set_size,\n                param_random_seed,\n                output_csv_features,\n                output_csv_target,\n                output_csv_target_class_labels,\n                output_csv_feature_list,\n                output_csv_patient_list_filtered,\n                output_csv_train_indexes,\n                output_csv_test_indexes):\n    \"\"\"Distribute
           categorical features into separate features.\n        Input: CSV with categorical
           (and numeric) features. Assume last \n            feature is target label.
           \n        Output: CSV with categorical features separated into dummies.\n\n    Args:\n        file_path:
           A string containing path to input data.\n        output_csv: A string containing
           path to processed data.\n    \"\"\"\n    import glob\n    import numpy as
-          np\n    import pandas as pd\n    from sklearn import preprocessing\n\n    df
-          = pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names = list(df.columns)\n\n    #
-          isolate column for target class label; if null, use last column\n    target_class_label
-          = class_label_colname if str(class_label_colname) != '''' else l_col_names[-1]\n    ##
-          remove all rows where class label col is NaN\n    df = df.dropna(subset=[target_class_label])\n    ##
-          remove patients from master list whose data got removed because class label
-          col was NaN\n    df_patient_list = pd.read_csv(file_path_patient_list)\n    df_patient_list_filtered
-          = df_patient_list.loc[df.index]\n\n    ## extract target class column\n    df_target_raw
-          = df[target_class_label] # from input parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))
+          np\n    import pandas as pd\n    from sklearn import preprocessing\n    from
+          sklearn.model_selection import train_test_split\n\n    df = pd.read_csv(filepath_or_buffer=file_path)\n    l_col_names
+          = list(df.columns)\n\n    # isolate column for target class label; if null,
+          use last column\n    target_class_label = class_label_colname if str(class_label_colname)
+          != '''' else l_col_names[-1]\n    ## remove all rows where class label col
+          is NaN\n    df = df.dropna(subset=[target_class_label])\n    ## remove patients
+          from master list whose data got removed because class label col was NaN\n    df_patient_list
+          = pd.read_csv(file_path_patient_list)\n    df_patient_list_filtered = df_patient_list.loc[df.index]\n\n    ##
+          extract target class column\n    df_target_raw = df[target_class_label]
+          # from input parameter\n    lb = preprocessing.LabelBinarizer()\n    lb.fit(df_target_raw.astype(str))
           # fit to data for target class to find all classes\n    target_class_label_names
           = lb.classes_ # store array of all the classes\n#    df_target = pd.DataFrame(np.array(lb.fit_transform(df_target_raw)))\n\n    df_target_class_labels
           = pd.DataFrame({''class'': target_class_label_names})\n    d_target_class_label_idx
@@ -1025,19 +1358,37 @@ spec:
           on feature matrix after dummies are removed\n    if str(s_colnames_to_exclude)
           != '''':\n        l_colnames_to_exclude = s_colnames_to_exclude.split('','')\n        l_colnames_in_this_df_to_exclude
           = [x for x in l_colnames_to_exclude if x in df.columns]\n        df_features
-          = df_features.drop(l_colnames_to_exclude, axis = 1)\n\n    # get dummies\n    df_features_dummies
-          = pd.get_dummies(df_features)\n\n    # feature list\n    l_features = df_features_dummies.columns\n    df_feature_list
-          = pd.DataFrame({''feature'': l_features})\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
+          = df_features.drop(l_colnames_to_exclude, axis = 1).reset_index() # reset_index
+          becauase need to get indexes for train/test later on data with rows filtered
+          out\n\n    # get dummies\n    df_features_dummies = pd.get_dummies(df_features)\n\n    #
+          feature list\n    l_features = df_features_dummies.columns\n    df_feature_list
+          = pd.DataFrame({''feature'': l_features})\n\n    # create train test and
+          store indexes, using these clinical features\n    param_test_set_size_float
+          = np.float64(param_test_set_size)\n\n    ## set a valid value of 0.25 for
+          test set size if needed\n    if param_test_set_size_float < 0 or param_test_set_size_float
+          > 1:\n        param_test_set_size_float = 0.25    \n\n    param_random_seed_int
+          = int(np.float64(param_random_seed))\n    X_train, X_test, y_train, y_test
+          = train_test_split(df_features_dummies, df_target, \n                                                    test_size=param_test_set_size_float,
+          \n                                                    random_state=param_random_seed_int)
+          # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:
+          \"index\"})\n    df_idx_train[''bcr_patient_barcode''] = df_patient_list_filtered.iloc[X_train.index]\n    df_idx_test
+          = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
+          = df_patient_list_filtered.iloc[X_test.index]\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
           index = False, header = True)\n    df_target.to_csv(output_csv_target, index
           = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,
           index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,
           index = True, header = False)\n    ### save new filtered patient list\n    df_patient_list_filtered.to_csv(output_csv_patient_list_filtered,
-          header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
+          header=True, index=False)\n    ### save training and testing splits - to
+          use with all fused feature matrices from now on\n    df_idx_train.to_csv(output_csv_train_indexes,
+          index = False, header = True)\n    df_idx_test.to_csv(output_csv_test_indexes,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Get
           dummies'', description=''Distribute categorical features into separate features.'')\n_parser.add_argument(\"--file\",
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-patient-list\",
           dest=\"file_path_patient_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--class-label-colname\",
           dest=\"class_label_colname\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--s-colnames-to-exclude\",
-          dest=\"s_colnames_to_exclude\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\",
+          dest=\"s_colnames_to_exclude\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-test-set-size\",
+          dest=\"param_test_set_size\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-features\",
           dest=\"output_csv_features\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-target\",
           dest=\"output_csv_target\", type=_make_parent_dirs_and_return_path, required=True,
@@ -1047,17 +1398,24 @@ spec:
           dest=\"output_csv_feature_list\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-patient-list-filtered\",
           dest=\"output_csv_patient_list_filtered\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-train-indexes\",
+          dest=\"output_csv_train_indexes\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv-test-indexes\",
+          dest=\"output_csv_test_indexes\", type=_make_parent_dirs_and_return_path,
           required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = get_dummies(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
           "A string containing path to input data.", "name": "file", "type": "CSV"},
           {"name": "file_path_patient_list", "type": "CSV"}, {"name": "class_label_colname",
-          "type": "String"}, {"name": "s_colnames_to_exclude", "type": "String"}],
-          "name": "Get dummies", "outputs": [{"name": "output_csv_features", "type":
-          "CSV"}, {"name": "output_csv_target", "type": "CSV"}, {"name": "output_csv_target_class_labels",
+          "type": "String"}, {"name": "s_colnames_to_exclude", "type": "String"},
+          {"name": "param_test_set_size", "type": "String"}, {"name": "param_random_seed",
+          "type": "String"}], "name": "Get dummies", "outputs": [{"name": "output_csv_features",
+          "type": "CSV"}, {"name": "output_csv_target", "type": "CSV"}, {"name": "output_csv_target_class_labels",
           "type": "CSV"}, {"name": "output_csv_feature_list", "type": "CSV"}, {"name":
-          "output_csv_patient_list_filtered", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
+          "output_csv_patient_list_filtered", "type": "CSV"}, {"name": "output_csv_train_indexes",
+          "type": "CSV"}, {"name": "output_csv_test_indexes", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}',
         pipelines.kubeflow.org/arguments.parameters: '{"class_label_colname": "{{inputs.parameters.user_input_class_label_column_name}}",
-          "s_colnames_to_exclude": "{{inputs.parameters.s_colnames_to_exclude}}"}'}
+          "param_random_seed": "{{inputs.parameters.param_random_seed}}", "param_test_set_size":
+          "{{inputs.parameters.test_set_size}}", "s_colnames_to_exclude": "{{inputs.parameters.s_colnames_to_exclude}}"}'}
   - name: impute-unknown
     container:
       args: [--file, /tmp/inputs/file/data, --output-csv, /tmp/outputs/output_csv/data]
@@ -1065,8 +1423,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1114,7 +1472,7 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = impute_unknown(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: get-dummies-output_csv_features, path: /tmp/inputs/file/data}
@@ -1130,8 +1488,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1150,7 +1508,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = impute_unknown(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          = impute_unknown(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs":
           [{"description": "A string containing path to input data.", "name": "file",
           "type": "CSV"}], "name": "Impute unknown", "outputs": [{"description": "A
           string containing path to processed data.", "name": "output_csv", "type":
@@ -1162,8 +1520,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1211,10 +1569,10 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = impute_unknown(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
-      - {name: construct-features-image-fx-outfile_features_df, path: /tmp/inputs/file/data}
+      - {name: construct-features-images-histomicstk-outfile_features_df, path: /tmp/inputs/file/data}
     outputs:
       artifacts:
       - {name: impute-unknown-2-output_csv, path: /tmp/outputs/output_csv/data}
@@ -1227,8 +1585,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1247,7 +1605,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = impute_unknown(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          = impute_unknown(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs":
           [{"description": "A string containing path to input data.", "name": "file",
           "type": "CSV"}], "name": "Impute unknown", "outputs": [{"description": "A
           string containing path to processed data.", "name": "output_csv", "type":
@@ -1259,8 +1617,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1308,7 +1666,7 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = impute_unknown(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: combine-feature-domains-outfile_master_features_df, path: /tmp/inputs/file/data}
@@ -1324,8 +1682,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1344,7 +1702,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = impute_unknown(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs":
+          = impute_unknown(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs":
           [{"description": "A string containing path to input data.", "name": "file",
           "type": "CSV"}], "name": "Impute unknown", "outputs": [{"description": "A
           string containing path to processed data.", "name": "output_csv", "type":
@@ -1352,6 +1710,7 @@ spec:
   - name: pl-gbm-v3-early-fusion-clinical-images
     inputs:
       parameters:
+      - {name: param_random_seed}
       - {name: s_colnames_to_exclude}
       - {name: test_set_size}
       - {name: user_input_class_label_column_name}
@@ -1359,17 +1718,24 @@ spec:
       tasks:
       - name: combine-feature-domains
         template: combine-feature-domains
-        dependencies: [construct-features-image-fx, get-dummies]
+        dependencies: [construct-features-images-histomicstk, get-dummies]
         arguments:
+          parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
+          - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
-          - {name: construct-features-image-fx-outfile_features_df, from: '{{tasks.construct-features-image-fx.outputs.artifacts.construct-features-image-fx-outfile_features_df}}'}
-          - {name: construct-features-image-fx-outfile_patient_id_list, from: '{{tasks.construct-features-image-fx.outputs.artifacts.construct-features-image-fx-outfile_patient_id_list}}'}
+          - {name: construct-features-images-histomicstk-outfile_features_df, from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_features_df}}'}
+          - {name: construct-features-images-histomicstk-outfile_patient_id_list,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_patient_id_list}}'}
           - {name: get-dummies-output_csv_features, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_features}}'}
           - {name: get-dummies-output_csv_patient_list_filtered, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_patient_list_filtered}}'}
-      - name: construct-features-image-fx
-        template: construct-features-image-fx
+      - name: construct-features-images-histomicstk
+        template: construct-features-images-histomicstk
         dependencies: [download-images, get-dummies]
         arguments:
+          parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
+          - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
           - {name: download-images-outfile_images_json, from: '{{tasks.download-images.outputs.artifacts.download-images-outfile_images_json}}'}
           - {name: get-dummies-output_csv_patient_list_filtered, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_patient_list_filtered}}'}
@@ -1379,27 +1745,38 @@ spec:
         dependencies: [get-dummies, scale-df]
         arguments:
           parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
           - {name: get-dummies-output_csv_target, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_target}}'}
+          - {name: get-dummies-output_csv_test_indexes, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_test_indexes}}'}
+          - {name: get-dummies-output_csv_train_indexes, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_train_indexes}}'}
           - {name: scale-df-output_csv, from: '{{tasks.scale-df.outputs.artifacts.scale-df-output_csv}}'}
       - name: create-model-inputs-2
         template: create-model-inputs-2
-        dependencies: [construct-features-image-fx, scale-df-2]
+        dependencies: [construct-features-images-histomicstk, scale-df-2]
         arguments:
           parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
-          - {name: construct-features-image-fx-outfile_class_labels_pts_with_images,
-            from: '{{tasks.construct-features-image-fx.outputs.artifacts.construct-features-image-fx-outfile_class_labels_pts_with_images}}'}
+          - {name: construct-features-images-histomicstk-outfile_class_labels_pts_with_images,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_class_labels_pts_with_images}}'}
+          - {name: construct-features-images-histomicstk-output_csv_test_indexes,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-output_csv_test_indexes}}'}
+          - {name: construct-features-images-histomicstk-output_csv_train_indexes,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-output_csv_train_indexes}}'}
           - {name: scale-df-2-output_csv, from: '{{tasks.scale-df-2.outputs.artifacts.scale-df-2-output_csv}}'}
       - name: create-model-inputs-3
         template: create-model-inputs-3
-        dependencies: [get-dummies, scale-df-3]
+        dependencies: [combine-feature-domains, get-dummies, scale-df-3]
         arguments:
           parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
+          - {name: combine-feature-domains-output_csv_test_indexes, from: '{{tasks.combine-feature-domains.outputs.artifacts.combine-feature-domains-output_csv_test_indexes}}'}
+          - {name: combine-feature-domains-output_csv_train_indexes, from: '{{tasks.combine-feature-domains.outputs.artifacts.combine-feature-domains-output_csv_train_indexes}}'}
           - {name: get-dummies-output_csv_target, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_target}}'}
           - {name: scale-df-3-output_csv, from: '{{tasks.scale-df-3.outputs.artifacts.scale-df-3-output_csv}}'}
       - {name: download-data-kfp-sdk-v2, template: download-data-kfp-sdk-v2}
@@ -1414,7 +1791,9 @@ spec:
         dependencies: [process-data-tarball]
         arguments:
           parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: s_colnames_to_exclude, value: '{{inputs.parameters.s_colnames_to_exclude}}'}
+          - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           - {name: user_input_class_label_column_name, value: '{{inputs.parameters.user_input_class_label_column_name}}'}
           artifacts:
           - {name: process-data-tarball-output_master_df, from: '{{tasks.process-data-tarball.outputs.artifacts.process-data-tarball-output_master_df}}'}
@@ -1427,10 +1806,10 @@ spec:
           - {name: get-dummies-output_csv_features, from: '{{tasks.get-dummies.outputs.artifacts.get-dummies-output_csv_features}}'}
       - name: impute-unknown-2
         template: impute-unknown-2
-        dependencies: [construct-features-image-fx]
+        dependencies: [construct-features-images-histomicstk]
         arguments:
           artifacts:
-          - {name: construct-features-image-fx-outfile_features_df, from: '{{tasks.construct-features-image-fx.outputs.artifacts.construct-features-image-fx-outfile_features_df}}'}
+          - {name: construct-features-images-histomicstk-outfile_features_df, from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_features_df}}'}
       - name: impute-unknown-3
         template: impute-unknown-3
         dependencies: [combine-feature-domains]
@@ -1489,6 +1868,8 @@ spec:
         template: train-model
         dependencies: [create-model-inputs]
         arguments:
+          parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-output_X_train, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_X_train}}'}
           - {name: create-model-inputs-output_y_train, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_y_train}}'}
@@ -1496,6 +1877,8 @@ spec:
         template: train-model-2
         dependencies: [create-model-inputs-2]
         arguments:
+          parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-2-output_X_train, from: '{{tasks.create-model-inputs-2.outputs.artifacts.create-model-inputs-2-output_X_train}}'}
           - {name: create-model-inputs-2-output_y_train, from: '{{tasks.create-model-inputs-2.outputs.artifacts.create-model-inputs-2-output_y_train}}'}
@@ -1503,6 +1886,8 @@ spec:
         template: train-model-3
         dependencies: [create-model-inputs-3]
         arguments:
+          parameters:
+          - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-3-output_X_train, from: '{{tasks.create-model-inputs-3.outputs.artifacts.create-model-inputs-3-output_X_train}}'}
           - {name: create-model-inputs-3-output_y_train, from: '{{tasks.create-model-inputs-3.outputs.artifacts.create-model-inputs-3-output_y_train}}'}
@@ -1717,8 +2102,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1766,7 +2151,7 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = scale_df(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: impute-unknown-output_csv, path: /tmp/inputs/file/data}
@@ -1782,8 +2167,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1800,7 +2185,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = scale_df(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          = scale_df(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"description":
           "A string containing path to input data.", "name": "file", "type": "CSV"}],
           "name": "Scale df", "outputs": [{"description": "A string containing path
           to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
@@ -1811,8 +2196,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1860,7 +2245,7 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = scale_df(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: impute-unknown-2-output_csv, path: /tmp/inputs/file/data}
@@ -1876,8 +2261,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1894,7 +2279,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = scale_df(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          = scale_df(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"description":
           "A string containing path to input data.", "name": "file", "type": "CSV"}],
           "name": "Scale df", "outputs": [{"description": "A string containing path
           to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
@@ -1905,8 +2290,8 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'pandas==1.1.4' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
-        -m pip install --quiet --no-warn-script-location 'pandas==1.1.4' 'scikit-learn==1.0.2'
+        'pandas==1.4.2' 'scikit-learn==1.0.2' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3
+        -m pip install --quiet --no-warn-script-location 'pandas==1.4.2' 'scikit-learn==1.0.2'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -1954,7 +2339,7 @@ spec:
         _parsed_args = vars(_parser.parse_args())
 
         _outputs = scale_df(**_parsed_args)
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: impute-unknown-3-output_csv, path: /tmp/inputs/file/data}
@@ -1970,8 +2355,8 @@ spec:
           unknown values (nan).", "implementation": {"container": {"args": ["--file",
           {"inputPath": "file"}, "--output-csv", {"outputPath": "output_csv"}], "command":
           ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-          --no-warn-script-location ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.1.4''
+          --no-warn-script-location ''pandas==1.4.2'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          python3 -m pip install --quiet --no-warn-script-location ''pandas==1.4.2''
           ''scikit-learn==1.0.2'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
@@ -1988,7 +2373,7 @@ spec:
           dest=\"file_path\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\",
           dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = scale_df(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"description":
+          = scale_df(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"description":
           "A string containing path to input data.", "name": "file", "type": "CSV"}],
           "name": "Scale df", "outputs": [{"description": "A string containing path
           to processed data.", "name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
@@ -2001,10 +2386,10 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2060,7 +2445,7 @@ spec:
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
         _outputs = test_model(**_parsed_args)\n"
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: train-model-output_model, path: /tmp/inputs/file_path_model/data}
@@ -2081,13 +2466,13 @@ spec:
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
@@ -2126,7 +2511,7 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"name": "file_path_x_test", "type":
+          "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
           "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
           "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
@@ -2139,10 +2524,10 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2198,7 +2583,7 @@ spec:
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
         _outputs = test_model(**_parsed_args)\n"
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: train-model-2-output_model, path: /tmp/inputs/file_path_model/data}
@@ -2219,13 +2604,13 @@ spec:
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
@@ -2264,7 +2649,7 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"name": "file_path_x_test", "type":
+          "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
           "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
           "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
@@ -2277,10 +2662,10 @@ spec:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2336,7 +2721,7 @@ spec:
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
         _outputs = test_model(**_parsed_args)\n"
-      image: python:3.7
+      image: python:3.9
     inputs:
       artifacts:
       - {name: train-model-3-output_model, path: /tmp/inputs/file_path_model/data}
@@ -2357,13 +2742,13 @@ spec:
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
@@ -2402,22 +2787,23 @@ spec:
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
-          "image": "python:3.7"}}, "inputs": [{"name": "file_path_x_test", "type":
+          "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
           "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
           "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: train-model
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
-        /tmp/inputs/file_path_y_train/data, --output-model, /tmp/outputs/output_model/data]
+        /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
+        --output-model, /tmp/outputs/output_model/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2427,29 +2813,34 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                output_model):\n    import joblib\n    import mlflow.sklearn\n\
-        \    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
-        \    from sklearn import preprocessing\n\n    X_train = pd.read_csv(file_path_x_train)\n\
-        \    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb = preprocessing.LabelBinarizer()\n\
-        #     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels = lb.classes_\
-        \ #\n#     print('y_class_labels: ', y_class_labels) #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))\
-        \    \n\n    y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n\
-        \                               penalty='l2',\n                          \
-        \     tol=1e-4,\n                               C=1.0,\n                 \
-        \              class_weight='balanced',\n                               solver='lbfgs',\n\
-        \                               multi_class='ovr')\n    model.fit(X_train,\
-        \ y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n       \
-        \                   serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \                param_random_seed,\n                output_model):\n    import\
+        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
+        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
+        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
+        \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
+        #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
+        \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
+        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
+        \                          penalty='l2',\n                               tol=1e-4,\n\
+        \                               C=1.0,\n                               class_weight='balanced',\n\
+        \                               solver='lbfgs',\n                        \
+        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
+        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
         )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
         \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
         --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\", dest=\"\
-        output_model\", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
-        _parsed_args = vars(_parser.parse_args())\n\n_outputs = train_model(**_parsed_args)\n"
-      image: python:3.7
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
+        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = train_model(**_parsed_args)\n"
+      image: python:3.9
     inputs:
+      parameters:
+      - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-output_y_train, path: /tmp/inputs/file_path_y_train/data}
@@ -2463,18 +2854,21 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
-          {"inputPath": "file_path_y_train"}, "--output-model", {"outputPath": "output_model"}],
+          {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
           "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow==1.24.0''
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                output_model):\n    import
-          joblib\n    import mlflow.sklearn\n    import pandas as pd\n    from sklearn.linear_model
-          import LogisticRegression\n    from sklearn import preprocessing\n\n    X_train
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
+          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
+          as pd\n    from sklearn.linear_model import LogisticRegression\n    from
+          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
@@ -2484,25 +2878,28 @@ spec:
           log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
           argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
-          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = train_model(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"name":
+          = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}], "name": "Train model", "outputs": [{"name": "output_model", "type":
-          "Model"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
+          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   - name: train-model-2
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
-        /tmp/inputs/file_path_y_train/data, --output-model, /tmp/outputs/output_model/data]
+        /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
+        --output-model, /tmp/outputs/output_model/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2512,29 +2909,34 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                output_model):\n    import joblib\n    import mlflow.sklearn\n\
-        \    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
-        \    from sklearn import preprocessing\n\n    X_train = pd.read_csv(file_path_x_train)\n\
-        \    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb = preprocessing.LabelBinarizer()\n\
-        #     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels = lb.classes_\
-        \ #\n#     print('y_class_labels: ', y_class_labels) #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))\
-        \    \n\n    y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n\
-        \                               penalty='l2',\n                          \
-        \     tol=1e-4,\n                               C=1.0,\n                 \
-        \              class_weight='balanced',\n                               solver='lbfgs',\n\
-        \                               multi_class='ovr')\n    model.fit(X_train,\
-        \ y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n       \
-        \                   serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \                param_random_seed,\n                output_model):\n    import\
+        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
+        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
+        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
+        \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
+        #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
+        \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
+        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
+        \                          penalty='l2',\n                               tol=1e-4,\n\
+        \                               C=1.0,\n                               class_weight='balanced',\n\
+        \                               solver='lbfgs',\n                        \
+        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
+        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
         )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
         \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
         --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\", dest=\"\
-        output_model\", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
-        _parsed_args = vars(_parser.parse_args())\n\n_outputs = train_model(**_parsed_args)\n"
-      image: python:3.7
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
+        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = train_model(**_parsed_args)\n"
+      image: python:3.9
     inputs:
+      parameters:
+      - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-2-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-2-output_y_train, path: /tmp/inputs/file_path_y_train/data}
@@ -2548,18 +2950,21 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
-          {"inputPath": "file_path_y_train"}, "--output-model", {"outputPath": "output_model"}],
+          {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
           "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow==1.24.0''
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                output_model):\n    import
-          joblib\n    import mlflow.sklearn\n    import pandas as pd\n    from sklearn.linear_model
-          import LogisticRegression\n    from sklearn import preprocessing\n\n    X_train
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
+          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
+          as pd\n    from sklearn.linear_model import LogisticRegression\n    from
+          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
@@ -2569,25 +2974,28 @@ spec:
           log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
           argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
-          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = train_model(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"name":
+          = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}], "name": "Train model", "outputs": [{"name": "output_model", "type":
-          "Model"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
+          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   - name: train-model-3
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
-        /tmp/inputs/file_path_y_train/data, --output-model, /tmp/outputs/output_model/data]
+        /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
+        --output-model, /tmp/outputs/output_model/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' ||
-        PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.1.4' 'scikit-learn==1.0.2' --user)
-        && "$0" "$@"
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
       - |
@@ -2597,29 +3005,34 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                output_model):\n    import joblib\n    import mlflow.sklearn\n\
-        \    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
-        \    from sklearn import preprocessing\n\n    X_train = pd.read_csv(file_path_x_train)\n\
-        \    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb = preprocessing.LabelBinarizer()\n\
-        #     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels = lb.classes_\
-        \ #\n#     print('y_class_labels: ', y_class_labels) #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))\
-        \    \n\n    y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n\
-        \                               penalty='l2',\n                          \
-        \     tol=1e-4,\n                               C=1.0,\n                 \
-        \              class_weight='balanced',\n                               solver='lbfgs',\n\
-        \                               multi_class='ovr')\n    model.fit(X_train,\
-        \ y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n       \
-        \                   serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \                param_random_seed,\n                output_model):\n    import\
+        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
+        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
+        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
+        \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
+        #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
+        \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
+        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
+        \                          penalty='l2',\n                               tol=1e-4,\n\
+        \                               C=1.0,\n                               class_weight='balanced',\n\
+        \                               solver='lbfgs',\n                        \
+        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
+        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
         )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
         \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
         , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
         --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\", dest=\"\
-        output_model\", type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n\
-        _parsed_args = vars(_parser.parse_args())\n\n_outputs = train_model(**_parsed_args)\n"
-      image: python:3.7
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
+        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
+        \n_outputs = train_model(**_parsed_args)\n"
+      image: python:3.9
     inputs:
+      parameters:
+      - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-3-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-3-output_y_train, path: /tmp/inputs/file_path_y_train/data}
@@ -2633,18 +3046,21 @@ spec:
         pipelines.kubeflow.org/enable_caching: "true"
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
-          {"inputPath": "file_path_y_train"}, "--output-model", {"outputPath": "output_model"}],
+          {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
+          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
           "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow==1.24.0''
-          ''pandas==1.1.4'' ''scikit-learn==1.0.2'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.1.4'' ''scikit-learn==1.0.2'' --user) &&
-          \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\"
-          > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
-          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
-          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                output_model):\n    import
-          joblib\n    import mlflow.sklearn\n    import pandas as pd\n    from sklearn.linear_model
-          import LogisticRegression\n    from sklearn import preprocessing\n\n    X_train
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
+          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
+          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
+          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
+          as pd\n    from sklearn.linear_model import LogisticRegression\n    from
+          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
@@ -2654,16 +3070,19 @@ spec:
           log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
           argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
-          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = train_model(**_parsed_args)\n"], "image": "python:3.7"}}, "inputs": [{"name":
+          = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}], "name": "Train model", "outputs": [{"name": "output_model", "type":
-          "Model"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
+          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   arguments:
     parameters:
     - {name: user_input_class_label_column_name}
     - {name: s_colnames_to_exclude}
     - {name: test_set_size}
+    - {name: param_random_seed}
   serviceAccountName: pipeline-runner
