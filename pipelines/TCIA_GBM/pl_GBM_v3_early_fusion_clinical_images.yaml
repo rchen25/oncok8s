@@ -2,14 +2,14 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v3-early-fusion-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-05-28T17:02:01.857712',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-06-01T09:16:36.412437',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
       {"description": "other columns to exclude, other than the ones automatically
       \nfiltered out in make_dfs(); separate colnames by '',''", "name": "s_colnames_to_exclude"},
-      {"name": "test_set_size"}, {"name": "param_random_seed"}], "name": "Pl GBM v3
-      early fusion clinical images"}'}
+      {"name": "test_set_size"}, {"name": "param_random_seed"}, {"name": "feature_selection_method"}],
+      "name": "Pl GBM v3 early fusion clinical images"}'}
   labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12}
 spec:
   entrypoint: pl-gbm-v3-early-fusion-clinical-images
@@ -298,8 +298,15 @@ spec:
         \        ptID]\n                        [0] # use the first image for the\
         \ pt\n                )\n        # feature extraction  \n        try:\n  \
         \          stats, label_image = ppc.count_image(img, template_params)\n  \
-        \      except: ## Placeholder - use sample image\n            stats, label_image\
-        \ = ppc.count_image(img_input_sample, template_params)\n\n        d_features['IntensitySumWeakPositive'].append(stats.IntensitySumWeakPositive)\n\
+        \      except: ## Placeholder - use NaN for any time ppc will not compute\n\
+        \            stats = ppc.Output(NumberWeakPositive=np.nan,\n             \
+        \                    NumberPositive=np.nan,\n                            \
+        \     NumberStrongPositive=np.nan, \n                                 IntensitySumWeakPositive=np.nan,\n\
+        \                                 IntensitySumPositive=np.nan,\n         \
+        \                        IntensitySumStrongPositive=np.nan,\n            \
+        \                     IntensityAverage=np.nan,\n                         \
+        \        RatioStrongToTotal=np.nan, \n                                 IntensityAverageWeakAndPositive=np.nan)\n\
+        \n        d_features['IntensitySumWeakPositive'].append(stats.IntensitySumWeakPositive)\n\
         \        d_features['IntensitySumPositive'].append(stats.IntensitySumPositive)\n\
         \        d_features['IntensitySumStrongPositive'].append(stats.IntensitySumStrongPositive)\n\
         \        d_features['IntensityAverage'].append(stats.IntensityAverage)\n \
@@ -448,8 +455,10 @@ spec:
           ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
           # use the first image for the pt\n                )\n        # feature extraction  \n        try:\n            stats,
           label_image = ppc.count_image(img, template_params)\n        except: ##
-          Placeholder - use sample image\n            stats, label_image = ppc.count_image(img_input_sample,
-          template_params)\n\n        d_features[''IntensitySumWeakPositive''].append(stats.IntensitySumWeakPositive)\n        d_features[''IntensitySumPositive''].append(stats.IntensitySumPositive)\n        d_features[''IntensitySumStrongPositive''].append(stats.IntensitySumStrongPositive)\n        d_features[''IntensityAverage''].append(stats.IntensityAverage)\n        d_features[''RatioStrongToTotal''].append(stats.RatioStrongToTotal)\n        d_features[''IntensityAverageWeakAndPositive''].append(stats.IntensityAverageWeakAndPositive)\n\n    ##########################################\n\n    #
+          Placeholder - use NaN for any time ppc will not compute\n            stats
+          = ppc.Output(NumberWeakPositive=np.nan,\n                                 NumberPositive=np.nan,\n                                 NumberStrongPositive=np.nan,
+          \n                                 IntensitySumWeakPositive=np.nan,\n                                 IntensitySumPositive=np.nan,\n                                 IntensitySumStrongPositive=np.nan,\n                                 IntensityAverage=np.nan,\n                                 RatioStrongToTotal=np.nan,
+          \n                                 IntensityAverageWeakAndPositive=np.nan)\n\n        d_features[''IntensitySumWeakPositive''].append(stats.IntensitySumWeakPositive)\n        d_features[''IntensitySumPositive''].append(stats.IntensitySumPositive)\n        d_features[''IntensitySumStrongPositive''].append(stats.IntensitySumStrongPositive)\n        d_features[''IntensityAverage''].append(stats.IntensityAverage)\n        d_features[''RatioStrongToTotal''].append(stats.RatioStrongToTotal)\n        d_features[''IntensityAverageWeakAndPositive''].append(stats.IntensityAverageWeakAndPositive)\n\n    ##########################################\n\n    #
           compute features and append to d_features - skimage\n    d_features[\"mean_weight_raw_img\"]
           = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"]
           = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID
@@ -1250,7 +1259,7 @@ spec:
         \ \"index\"})\n    df_idx_train['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_train.index]\n\
         \    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"})\n\
         \    df_idx_test['bcr_patient_barcode'] = df_patient_list_filtered.iloc[X_test.index]\n\
-        \n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,\
+        \n    # write outputs\n    del df_features_dummies['index']\n    df_features_dummies.to_csv(output_csv_features,\
         \ index = False, header = True)\n    df_target.to_csv(output_csv_target, index\
         \ = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,\
         \ index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,\
@@ -1373,7 +1382,8 @@ spec:
           # IMPT: set random seed\n    df_idx_train = X_train.index.to_frame().rename(columns={0:
           \"index\"})\n    df_idx_train[''bcr_patient_barcode''] = df_patient_list_filtered.iloc[X_train.index]\n    df_idx_test
           = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
-          = df_patient_list_filtered.iloc[X_test.index]\n\n    # write outputs\n    df_features_dummies.to_csv(output_csv_features,
+          = df_patient_list_filtered.iloc[X_test.index]\n\n    # write outputs\n    del
+          df_features_dummies[''index'']\n    df_features_dummies.to_csv(output_csv_features,
           index = False, header = True)\n    df_target.to_csv(output_csv_target, index
           = False, header = True)\n    df_target_class_labels.to_csv(output_csv_target_class_labels,
           index = True, header = False)\n    df_feature_list.to_csv(output_csv_feature_list,
@@ -1710,6 +1720,7 @@ spec:
   - name: pl-gbm-v3-early-fusion-clinical-images
     inputs:
       parameters:
+      - {name: feature_selection_method}
       - {name: param_random_seed}
       - {name: s_colnames_to_exclude}
       - {name: test_set_size}
@@ -1847,6 +1858,7 @@ spec:
           artifacts:
           - {name: create-model-inputs-output_X_test, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_X_test}}'}
           - {name: create-model-inputs-output_y_test, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_y_test}}'}
+          - {name: train-model-output_features_selected, from: '{{tasks.train-model.outputs.artifacts.train-model-output_features_selected}}'}
           - {name: train-model-output_model, from: '{{tasks.train-model.outputs.artifacts.train-model-output_model}}'}
       - name: test-model-2
         template: test-model-2
@@ -1855,6 +1867,7 @@ spec:
           artifacts:
           - {name: create-model-inputs-2-output_X_test, from: '{{tasks.create-model-inputs-2.outputs.artifacts.create-model-inputs-2-output_X_test}}'}
           - {name: create-model-inputs-2-output_y_test, from: '{{tasks.create-model-inputs-2.outputs.artifacts.create-model-inputs-2-output_y_test}}'}
+          - {name: train-model-2-output_features_selected, from: '{{tasks.train-model-2.outputs.artifacts.train-model-2-output_features_selected}}'}
           - {name: train-model-2-output_model, from: '{{tasks.train-model-2.outputs.artifacts.train-model-2-output_model}}'}
       - name: test-model-3
         template: test-model-3
@@ -1863,12 +1876,14 @@ spec:
           artifacts:
           - {name: create-model-inputs-3-output_X_test, from: '{{tasks.create-model-inputs-3.outputs.artifacts.create-model-inputs-3-output_X_test}}'}
           - {name: create-model-inputs-3-output_y_test, from: '{{tasks.create-model-inputs-3.outputs.artifacts.create-model-inputs-3-output_y_test}}'}
+          - {name: train-model-3-output_features_selected, from: '{{tasks.train-model-3.outputs.artifacts.train-model-3-output_features_selected}}'}
           - {name: train-model-3-output_model, from: '{{tasks.train-model-3.outputs.artifacts.train-model-3-output_model}}'}
       - name: train-model
         template: train-model
         dependencies: [create-model-inputs]
         arguments:
           parameters:
+          - {name: feature_selection_method, value: '{{inputs.parameters.feature_selection_method}}'}
           - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-output_X_train, from: '{{tasks.create-model-inputs.outputs.artifacts.create-model-inputs-output_X_train}}'}
@@ -1878,6 +1893,7 @@ spec:
         dependencies: [create-model-inputs-2]
         arguments:
           parameters:
+          - {name: feature_selection_method, value: '{{inputs.parameters.feature_selection_method}}'}
           - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-2-output_X_train, from: '{{tasks.create-model-inputs-2.outputs.artifacts.create-model-inputs-2-output_X_train}}'}
@@ -1887,6 +1903,7 @@ spec:
         dependencies: [create-model-inputs-3]
         arguments:
           parameters:
+          - {name: feature_selection_method, value: '{{inputs.parameters.feature_selection_method}}'}
           - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           artifacts:
           - {name: create-model-inputs-3-output_X_train, from: '{{tasks.create-model-inputs-3.outputs.artifacts.create-model-inputs-3-output_X_train}}'}
@@ -2381,14 +2398,15 @@ spec:
     container:
       args: [--file-path-x-test, /tmp/inputs/file_path_x_test/data, --file-path-y-test,
         /tmp/inputs/file_path_y_test/data, --file-path-model, /tmp/inputs/file_path_model/data,
+        --file-path-features-selected, /tmp/inputs/file_path_features_selected/data,
         --output-json, /tmp/outputs/output_json/data, --output-csv, /tmp/outputs/output_csv/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -2399,17 +2417,20 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef test_model(file_path_x_test,\n               file_path_y_test,\n   \
-        \            file_path_model,\n               output_json,\n             \
-        \  output_csv):\n    import joblib\n    import json\n    import mlflow.sklearn\n\
-        \    import numpy as np\n    import pandas as pd\n    from sklearn.linear_model\
-        \ import LogisticRegression\n    from sklearn.metrics import accuracy_score\n\
-        \    from sklearn.metrics import confusion_matrix\n    from sklearn.metrics\
-        \ import roc_auc_score\n    from sklearn.preprocessing import LabelBinarizer\n\
-        \n    class NumpyArrayEncoder(json.JSONEncoder):\n        def default(self,\
-        \ obj):\n            if isinstance(obj, np.ndarray):\n                return\
-        \ obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n\
-        \    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    X_test\
-        \ = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n\
+        \            file_path_model,\n               file_path_features_selected,\n\
+        \               output_json,\n               output_csv):\n    import joblib\n\
+        \    import json\n    import mlflow.sklearn\n    import numpy as np\n    import\
+        \ pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn.metrics import accuracy_score\n    from sklearn.metrics\
+        \ import confusion_matrix\n    from sklearn.metrics import roc_auc_score\n\
+        \    from sklearn.preprocessing import LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n\
+        \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
+        \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
+        \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
+        \n    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
+        \n    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
+        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
+        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
         \n    # Get predictions \n    y_pred = trained_model.predict(X_test)\n\n \
         \   #############################################################\n\n    #\
         \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion\
@@ -2440,7 +2461,9 @@ spec:
         _parser.add_argument(\"--file-path-y-test\", dest=\"file_path_y_test\", type=str,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\"\
         , dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+        _parser.add_argument(\"--file-path-features-selected\", dest=\"file_path_features_selected\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\"\
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
@@ -2448,6 +2471,7 @@ spec:
       image: python:3.9
     inputs:
       artifacts:
+      - {name: train-model-output_features_selected, path: /tmp/inputs/file_path_features_selected/data}
       - {name: train-model-output_model, path: /tmp/inputs/file_path_model/data}
       - {name: create-model-inputs-output_X_test, path: /tmp/inputs/file_path_x_test/data}
       - {name: create-model-inputs-output_y_test, path: /tmp/inputs/file_path_y_test/data}
@@ -2463,26 +2487,30 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-test", {"inputPath": "file_path_x_test"}, "--file-path-y-test",
           {"inputPath": "file_path_y_test"}, "--file-path-model", {"inputPath": "file_path_model"},
+          "--file-path-features-selected", {"inputPath": "file_path_features_selected"},
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
           || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1''
           ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               file_path_features_selected,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
           sklearn.metrics import roc_auc_score\n    from sklearn.preprocessing import
           LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n        def
           default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
-          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    trained_model
-          = mlflow.sklearn.load_model(file_path_model)\n\n    X_test = pd.read_csv(file_path_x_test)\n    y_test
-          = np.array(pd.read_csv(file_path_y_test))\n\n    # Get predictions \n    y_pred
-          = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
+          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    #
+          load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\n    #
+          load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    #
+          load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test =
+          np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions \n    y_pred = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #
           AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -2506,27 +2534,30 @@ spec:
           model'', description='''')\n_parser.add_argument(\"--file-path-x-test\",
           dest=\"file_path_x_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-test\",
           dest=\"file_path_y_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\",
-          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
+          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-features-selected\",
+          dest=\"file_path_features_selected\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
           dest=\"output_json\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
           "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
-          "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
-          "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "type": "Model"}, {"name": "file_path_features_selected", "type": "CSV"}],
+          "name": "Test model", "outputs": [{"name": "output_json", "type": "JSON"},
+          {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: test-model-2
     container:
       args: [--file-path-x-test, /tmp/inputs/file_path_x_test/data, --file-path-y-test,
         /tmp/inputs/file_path_y_test/data, --file-path-model, /tmp/inputs/file_path_model/data,
+        --file-path-features-selected, /tmp/inputs/file_path_features_selected/data,
         --output-json, /tmp/outputs/output_json/data, --output-csv, /tmp/outputs/output_csv/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -2537,17 +2568,20 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef test_model(file_path_x_test,\n               file_path_y_test,\n   \
-        \            file_path_model,\n               output_json,\n             \
-        \  output_csv):\n    import joblib\n    import json\n    import mlflow.sklearn\n\
-        \    import numpy as np\n    import pandas as pd\n    from sklearn.linear_model\
-        \ import LogisticRegression\n    from sklearn.metrics import accuracy_score\n\
-        \    from sklearn.metrics import confusion_matrix\n    from sklearn.metrics\
-        \ import roc_auc_score\n    from sklearn.preprocessing import LabelBinarizer\n\
-        \n    class NumpyArrayEncoder(json.JSONEncoder):\n        def default(self,\
-        \ obj):\n            if isinstance(obj, np.ndarray):\n                return\
-        \ obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n\
-        \    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    X_test\
-        \ = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n\
+        \            file_path_model,\n               file_path_features_selected,\n\
+        \               output_json,\n               output_csv):\n    import joblib\n\
+        \    import json\n    import mlflow.sklearn\n    import numpy as np\n    import\
+        \ pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn.metrics import accuracy_score\n    from sklearn.metrics\
+        \ import confusion_matrix\n    from sklearn.metrics import roc_auc_score\n\
+        \    from sklearn.preprocessing import LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n\
+        \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
+        \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
+        \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
+        \n    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
+        \n    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
+        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
+        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
         \n    # Get predictions \n    y_pred = trained_model.predict(X_test)\n\n \
         \   #############################################################\n\n    #\
         \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion\
@@ -2578,7 +2612,9 @@ spec:
         _parser.add_argument(\"--file-path-y-test\", dest=\"file_path_y_test\", type=str,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\"\
         , dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+        _parser.add_argument(\"--file-path-features-selected\", dest=\"file_path_features_selected\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\"\
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
@@ -2586,6 +2622,7 @@ spec:
       image: python:3.9
     inputs:
       artifacts:
+      - {name: train-model-2-output_features_selected, path: /tmp/inputs/file_path_features_selected/data}
       - {name: train-model-2-output_model, path: /tmp/inputs/file_path_model/data}
       - {name: create-model-inputs-2-output_X_test, path: /tmp/inputs/file_path_x_test/data}
       - {name: create-model-inputs-2-output_y_test, path: /tmp/inputs/file_path_y_test/data}
@@ -2601,26 +2638,30 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-test", {"inputPath": "file_path_x_test"}, "--file-path-y-test",
           {"inputPath": "file_path_y_test"}, "--file-path-model", {"inputPath": "file_path_model"},
+          "--file-path-features-selected", {"inputPath": "file_path_features_selected"},
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
           || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1''
           ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               file_path_features_selected,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
           sklearn.metrics import roc_auc_score\n    from sklearn.preprocessing import
           LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n        def
           default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
-          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    trained_model
-          = mlflow.sklearn.load_model(file_path_model)\n\n    X_test = pd.read_csv(file_path_x_test)\n    y_test
-          = np.array(pd.read_csv(file_path_y_test))\n\n    # Get predictions \n    y_pred
-          = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
+          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    #
+          load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\n    #
+          load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    #
+          load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test =
+          np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions \n    y_pred = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #
           AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -2644,27 +2685,30 @@ spec:
           model'', description='''')\n_parser.add_argument(\"--file-path-x-test\",
           dest=\"file_path_x_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-test\",
           dest=\"file_path_y_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\",
-          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
+          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-features-selected\",
+          dest=\"file_path_features_selected\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
           dest=\"output_json\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
           "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
-          "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
-          "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "type": "Model"}, {"name": "file_path_features_selected", "type": "CSV"}],
+          "name": "Test model", "outputs": [{"name": "output_json", "type": "JSON"},
+          {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: test-model-3
     container:
       args: [--file-path-x-test, /tmp/inputs/file_path_x_test/data, --file-path-y-test,
         /tmp/inputs/file_path_y_test/data, --file-path-model, /tmp/inputs/file_path_model/data,
+        --file-path-features-selected, /tmp/inputs/file_path_features_selected/data,
         --output-json, /tmp/outputs/output_json/data, --output-csv, /tmp/outputs/output_csv/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow==1.24.0' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         --user) && "$0" "$@"
       - sh
       - -ec
@@ -2675,17 +2719,20 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef test_model(file_path_x_test,\n               file_path_y_test,\n   \
-        \            file_path_model,\n               output_json,\n             \
-        \  output_csv):\n    import joblib\n    import json\n    import mlflow.sklearn\n\
-        \    import numpy as np\n    import pandas as pd\n    from sklearn.linear_model\
-        \ import LogisticRegression\n    from sklearn.metrics import accuracy_score\n\
-        \    from sklearn.metrics import confusion_matrix\n    from sklearn.metrics\
-        \ import roc_auc_score\n    from sklearn.preprocessing import LabelBinarizer\n\
-        \n    class NumpyArrayEncoder(json.JSONEncoder):\n        def default(self,\
-        \ obj):\n            if isinstance(obj, np.ndarray):\n                return\
-        \ obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n\
-        \    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    X_test\
-        \ = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n\
+        \            file_path_model,\n               file_path_features_selected,\n\
+        \               output_json,\n               output_csv):\n    import joblib\n\
+        \    import json\n    import mlflow.sklearn\n    import numpy as np\n    import\
+        \ pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn.metrics import accuracy_score\n    from sklearn.metrics\
+        \ import confusion_matrix\n    from sklearn.metrics import roc_auc_score\n\
+        \    from sklearn.preprocessing import LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n\
+        \        def default(self, obj):\n            if isinstance(obj, np.ndarray):\n\
+        \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
+        \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
+        \n    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
+        \n    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
+        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
+        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
         \n    # Get predictions \n    y_pred = trained_model.predict(X_test)\n\n \
         \   #############################################################\n\n    #\
         \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion\
@@ -2716,7 +2763,9 @@ spec:
         _parser.add_argument(\"--file-path-y-test\", dest=\"file_path_y_test\", type=str,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\"\
         , dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
+        _parser.add_argument(\"--file-path-features-selected\", dest=\"file_path_features_selected\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --output-json\", dest=\"output_json\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\"\
         , dest=\"output_csv\", type=_make_parent_dirs_and_return_path, required=True,\
         \ default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n\
@@ -2724,6 +2773,7 @@ spec:
       image: python:3.9
     inputs:
       artifacts:
+      - {name: train-model-3-output_features_selected, path: /tmp/inputs/file_path_features_selected/data}
       - {name: train-model-3-output_model, path: /tmp/inputs/file_path_model/data}
       - {name: create-model-inputs-3-output_X_test, path: /tmp/inputs/file_path_x_test/data}
       - {name: create-model-inputs-3-output_y_test, path: /tmp/inputs/file_path_y_test/data}
@@ -2739,26 +2789,30 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-test", {"inputPath": "file_path_x_test"}, "--file-path-y-test",
           {"inputPath": "file_path_y_test"}, "--file-path-model", {"inputPath": "file_path_model"},
+          "--file-path-features-selected", {"inputPath": "file_path_features_selected"},
           "--output-json", {"outputPath": "output_json"}, "--output-csv", {"outputPath":
           "output_csv"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
+          ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
           || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.0.2''
+          ''joblib==1.1.0'' ''mlflow==1.24.0'' ''pandas==1.4.2'' ''scikit-learn==1.1.1''
           ''protobuf==3.19.0'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
           \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
           "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               output_json,\n               output_csv):\n    import
+          exist_ok=True)\n    return file_path\n\ndef test_model(file_path_x_test,\n               file_path_y_test,\n               file_path_model,\n               file_path_features_selected,\n               output_json,\n               output_csv):\n    import
           joblib\n    import json\n    import mlflow.sklearn\n    import numpy as
           np\n    import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n    from
           sklearn.metrics import accuracy_score\n    from sklearn.metrics import confusion_matrix\n    from
           sklearn.metrics import roc_auc_score\n    from sklearn.preprocessing import
           LabelBinarizer\n\n    class NumpyArrayEncoder(json.JSONEncoder):\n        def
           default(self, obj):\n            if isinstance(obj, np.ndarray):\n                return
-          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    trained_model
-          = mlflow.sklearn.load_model(file_path_model)\n\n    X_test = pd.read_csv(file_path_x_test)\n    y_test
-          = np.array(pd.read_csv(file_path_y_test))\n\n    # Get predictions \n    y_pred
-          = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
+          obj.tolist()\n            return json.JSONEncoder.default(self, obj)\n\n    #
+          load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\n    #
+          load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\n    #
+          load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test =
+          np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions \n    y_pred = trained_model.predict(X_test)\n\n    #############################################################\n\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\n    #
           AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -2782,27 +2836,31 @@ spec:
           model'', description='''')\n_parser.add_argument(\"--file-path-x-test\",
           dest=\"file_path_x_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-test\",
           dest=\"file_path_y_test\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-model\",
-          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
+          dest=\"file_path_model\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-features-selected\",
+          dest=\"file_path_features_selected\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-json\",
           dest=\"output_json\", type=_make_parent_dirs_and_return_path, required=True,
           default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-csv\", dest=\"output_csv\",
           type=_make_parent_dirs_and_return_path, required=True, default=argparse.SUPPRESS)\n_parsed_args
           = vars(_parser.parse_args())\n\n_outputs = test_model(**_parsed_args)\n"],
           "image": "python:3.9"}}, "inputs": [{"name": "file_path_x_test", "type":
           "CSV"}, {"name": "file_path_y_test", "type": "CSV"}, {"name": "file_path_model",
-          "type": "Model"}], "name": "Test model", "outputs": [{"name": "output_json",
-          "type": "JSON"}, {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
+          "type": "Model"}, {"name": "file_path_features_selected", "type": "CSV"}],
+          "name": "Test model", "outputs": [{"name": "output_json", "type": "JSON"},
+          {"name": "output_csv", "type": "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: train-model
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
         /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
-        --output-model, /tmp/outputs/output_model/data]
+        --feature-selection-method, '{{inputs.parameters.feature_selection_method}}',
+        --output-model, /tmp/outputs/output_model/data, --output-features-selected,
+        /tmp/outputs/output_features_selected/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1'
         'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
@@ -2813,39 +2871,79 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                param_random_seed,\n                output_model):\n    import\
-        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
-        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
-        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \                param_random_seed,\n                feature_selection_method,\n\
+        \                output_model,\n                output_features_selected):\n\
+        \    import joblib\n    import numpy as np\n    import mlflow.sklearn\n  \
+        \  import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn import preprocessing\n\n    from sklearn.feature_selection\
+        \ import chi2, RFE, SelectKBest, SelectPercentile, \\\n                  \
+        \                        SequentialFeatureSelector, VarianceThreshold\n\n\
+        \    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
         \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
         \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
         #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
         \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
-        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
-        \                          penalty='l2',\n                               tol=1e-4,\n\
-        \                               C=1.0,\n                               class_weight='balanced',\n\
-        \                               solver='lbfgs',\n                        \
-        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
-        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \ y_train=y_train_raw\n\n    # feature selection\n    ## define feature selection\
+        \ method\n    if feature_selection_method == 'VarianceThreshold':\n      \
+        \  feature_selector = VarianceThreshold(threshold=(.8 * (1 - .8)))\n     \
+        \   X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif feature_selection_method\
+        \ == 'f_classif':\n        feature_selector = SelectPercentile(percentile=20)\n\
+        \        X_train_after_fs = feature_selector.fit_transform(X_train, y_train)\n\
+        \    elif feature_selection_method == 'chi2': # NOTE: need to have non-negative\
+        \ features (e.g., binary, count)\n        feature_selector = SelectPercentile(chi2,\
+        \ percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    elif feature_selection_method == 'SequentialFeatureSelector_backward':\n\
+        \        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='backward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    elif feature_selection_method\
+        \ == 'SequentialFeatureSelector_forward':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='forward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    else: # set\
+        \ default FS method (choose all fx) if none of the coded FS methods are used\
+        \ as input\n        feature_selector = SelectKBest(k='all') # by default,\
+        \ choose all features i.e., k='all'\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    features_selected = feature_selector.get_feature_names_out(X_train.columns)\n\
+        \    df_features_selected = pd.DataFrame(features_selected).rename(columns={0:\
+        \ \"feature_selected\"})\n    print(\"features selected:\", list(df_features_selected['feature_selected']))\n\
+        \n    # fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n\
+        \                               penalty='l2',\n                          \
+        \     tol=1e-4,\n                               C=1.0,\n                 \
+        \              class_weight='balanced',\n                               solver='lbfgs',\n\
+        \                               multi_class='ovr')\n    model.fit(X_train_after_fs,\
+        \ y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n\
+        \                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
-        )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
-        \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
-        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
-        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        )\n\n    # save features\n    df_features_selected.to_csv(output_features_selected,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train\
+        \ model', description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"\
+        file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--file-path-y-train\", dest=\"file_path_y_train\",\
+        \ type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --param-random-seed\", dest=\"param_random_seed\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\"\
+        , dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\"\
+        , dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = train_model(**_parsed_args)\n"
       image: python:3.9
     inputs:
       parameters:
+      - {name: feature_selection_method}
       - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-output_y_train, path: /tmp/inputs/file_path_y_train/data}
     outputs:
       artifacts:
+      - {name: train-model-output_features_selected, path: /tmp/outputs/output_features_selected/data}
       - {name: train-model-output_model, path: /tmp/outputs/output_model/data}
     metadata:
       labels:
@@ -2855,50 +2953,84 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
           {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
-          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
-          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
-          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          "param_random_seed"}, "--feature-selection-method", {"inputValue": "feature_selection_method"},
+          "--output-model", {"outputPath": "output_model"}, "--output-features-selected",
+          {"outputPath": "output_features_selected"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
-          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
-          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
-          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.1.1'' ''protobuf==3.19.0'' ''numpy'' --user) && \"$0\"
+          \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                param_random_seed,\n                feature_selection_method,\n                output_model,\n                output_features_selected):\n    import
           joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
           as pd\n    from sklearn.linear_model import LogisticRegression\n    from
-          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
+          sklearn import preprocessing\n\n    from sklearn.feature_selection import
+          chi2, RFE, SelectKBest, SelectPercentile, \\\n                                          SequentialFeatureSelector,
+          VarianceThreshold\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
-          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    model
-          = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train,
-          y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
-          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
-          argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
+          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    #
+          feature selection\n    ## define feature selection method\n    if feature_selection_method
+          == ''VarianceThreshold'':\n        feature_selector = VarianceThreshold(threshold=(.8
+          * (1 - .8)))\n        X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif
+          feature_selection_method == ''f_classif'':\n        feature_selector = SelectPercentile(percentile=20)\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    elif feature_selection_method
+          == ''chi2'': # NOTE: need to have non-negative features (e.g., binary, count)\n        feature_selector
+          = SelectPercentile(chi2, percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,
+          y_train)\n    elif feature_selection_method == ''SequentialFeatureSelector_backward'':\n        feature_selector
+          = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''backward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    elif feature_selection_method
+          == ''SequentialFeatureSelector_forward'':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''forward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    else: # set default FS method
+          (choose all fx) if none of the coded FS methods are used as input\n        feature_selector
+          = SelectKBest(k=''all'') # by default, choose all features i.e., k=''all''\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    features_selected
+          = feature_selector.get_feature_names_out(X_train.columns)\n    df_features_selected
+          = pd.DataFrame(features_selected).rename(columns={0: \"feature_selected\"})\n    print(\"features
+          selected:\", list(df_features_selected[''feature_selected'']))\n\n    #
+          fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train_after_fs,
+          y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
+          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\n    #
+          save features\n    df_features_selected.to_csv(output_features_selected,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Train
+          model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
           dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
-          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\",
+          dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
-          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\",
+          dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
-          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
-        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}, {"name": "feature_selection_method",
+          "type": "String"}], "name": "Train model", "outputs": [{"name": "output_model",
+          "type": "Model"}, {"name": "output_features_selected", "type": "CSV"}]}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"feature_selection_method":
+          "{{inputs.parameters.feature_selection_method}}", "param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   - name: train-model-2
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
         /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
-        --output-model, /tmp/outputs/output_model/data]
+        --feature-selection-method, '{{inputs.parameters.feature_selection_method}}',
+        --output-model, /tmp/outputs/output_model/data, --output-features-selected,
+        /tmp/outputs/output_features_selected/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1'
         'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
@@ -2909,39 +3041,79 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                param_random_seed,\n                output_model):\n    import\
-        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
-        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
-        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \                param_random_seed,\n                feature_selection_method,\n\
+        \                output_model,\n                output_features_selected):\n\
+        \    import joblib\n    import numpy as np\n    import mlflow.sklearn\n  \
+        \  import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn import preprocessing\n\n    from sklearn.feature_selection\
+        \ import chi2, RFE, SelectKBest, SelectPercentile, \\\n                  \
+        \                        SequentialFeatureSelector, VarianceThreshold\n\n\
+        \    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
         \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
         \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
         #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
         \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
-        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
-        \                          penalty='l2',\n                               tol=1e-4,\n\
-        \                               C=1.0,\n                               class_weight='balanced',\n\
-        \                               solver='lbfgs',\n                        \
-        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
-        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \ y_train=y_train_raw\n\n    # feature selection\n    ## define feature selection\
+        \ method\n    if feature_selection_method == 'VarianceThreshold':\n      \
+        \  feature_selector = VarianceThreshold(threshold=(.8 * (1 - .8)))\n     \
+        \   X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif feature_selection_method\
+        \ == 'f_classif':\n        feature_selector = SelectPercentile(percentile=20)\n\
+        \        X_train_after_fs = feature_selector.fit_transform(X_train, y_train)\n\
+        \    elif feature_selection_method == 'chi2': # NOTE: need to have non-negative\
+        \ features (e.g., binary, count)\n        feature_selector = SelectPercentile(chi2,\
+        \ percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    elif feature_selection_method == 'SequentialFeatureSelector_backward':\n\
+        \        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='backward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    elif feature_selection_method\
+        \ == 'SequentialFeatureSelector_forward':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='forward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    else: # set\
+        \ default FS method (choose all fx) if none of the coded FS methods are used\
+        \ as input\n        feature_selector = SelectKBest(k='all') # by default,\
+        \ choose all features i.e., k='all'\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    features_selected = feature_selector.get_feature_names_out(X_train.columns)\n\
+        \    df_features_selected = pd.DataFrame(features_selected).rename(columns={0:\
+        \ \"feature_selected\"})\n    print(\"features selected:\", list(df_features_selected['feature_selected']))\n\
+        \n    # fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n\
+        \                               penalty='l2',\n                          \
+        \     tol=1e-4,\n                               C=1.0,\n                 \
+        \              class_weight='balanced',\n                               solver='lbfgs',\n\
+        \                               multi_class='ovr')\n    model.fit(X_train_after_fs,\
+        \ y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n\
+        \                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
-        )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
-        \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
-        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
-        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        )\n\n    # save features\n    df_features_selected.to_csv(output_features_selected,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train\
+        \ model', description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"\
+        file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--file-path-y-train\", dest=\"file_path_y_train\",\
+        \ type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --param-random-seed\", dest=\"param_random_seed\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\"\
+        , dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\"\
+        , dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = train_model(**_parsed_args)\n"
       image: python:3.9
     inputs:
       parameters:
+      - {name: feature_selection_method}
       - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-2-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-2-output_y_train, path: /tmp/inputs/file_path_y_train/data}
     outputs:
       artifacts:
+      - {name: train-model-2-output_features_selected, path: /tmp/outputs/output_features_selected/data}
       - {name: train-model-2-output_model, path: /tmp/outputs/output_model/data}
     metadata:
       labels:
@@ -2951,50 +3123,84 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
           {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
-          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
-          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
-          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          "param_random_seed"}, "--feature-selection-method", {"inputValue": "feature_selection_method"},
+          "--output-model", {"outputPath": "output_model"}, "--output-features-selected",
+          {"outputPath": "output_features_selected"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
-          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
-          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
-          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.1.1'' ''protobuf==3.19.0'' ''numpy'' --user) && \"$0\"
+          \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                param_random_seed,\n                feature_selection_method,\n                output_model,\n                output_features_selected):\n    import
           joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
           as pd\n    from sklearn.linear_model import LogisticRegression\n    from
-          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
+          sklearn import preprocessing\n\n    from sklearn.feature_selection import
+          chi2, RFE, SelectKBest, SelectPercentile, \\\n                                          SequentialFeatureSelector,
+          VarianceThreshold\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
-          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    model
-          = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train,
-          y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
-          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
-          argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
+          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    #
+          feature selection\n    ## define feature selection method\n    if feature_selection_method
+          == ''VarianceThreshold'':\n        feature_selector = VarianceThreshold(threshold=(.8
+          * (1 - .8)))\n        X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif
+          feature_selection_method == ''f_classif'':\n        feature_selector = SelectPercentile(percentile=20)\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    elif feature_selection_method
+          == ''chi2'': # NOTE: need to have non-negative features (e.g., binary, count)\n        feature_selector
+          = SelectPercentile(chi2, percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,
+          y_train)\n    elif feature_selection_method == ''SequentialFeatureSelector_backward'':\n        feature_selector
+          = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''backward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    elif feature_selection_method
+          == ''SequentialFeatureSelector_forward'':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''forward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    else: # set default FS method
+          (choose all fx) if none of the coded FS methods are used as input\n        feature_selector
+          = SelectKBest(k=''all'') # by default, choose all features i.e., k=''all''\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    features_selected
+          = feature_selector.get_feature_names_out(X_train.columns)\n    df_features_selected
+          = pd.DataFrame(features_selected).rename(columns={0: \"feature_selected\"})\n    print(\"features
+          selected:\", list(df_features_selected[''feature_selected'']))\n\n    #
+          fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train_after_fs,
+          y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
+          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\n    #
+          save features\n    df_features_selected.to_csv(output_features_selected,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Train
+          model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
           dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
-          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\",
+          dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
-          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\",
+          dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
-          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
-        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}, {"name": "feature_selection_method",
+          "type": "String"}], "name": "Train model", "outputs": [{"name": "output_model",
+          "type": "Model"}, {"name": "output_features_selected", "type": "CSV"}]}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"feature_selection_method":
+          "{{inputs.parameters.feature_selection_method}}", "param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   - name: train-model-3
     container:
       args: [--file-path-x-train, /tmp/inputs/file_path_x_train/data, --file-path-y-train,
         /tmp/inputs/file_path_y_train/data, --param-random-seed, '{{inputs.parameters.param_random_seed}}',
-        --output-model, /tmp/outputs/output_model/data]
+        --feature-selection-method, '{{inputs.parameters.feature_selection_method}}',
+        --output-model, /tmp/outputs/output_model/data, --output-features-selected,
+        /tmp/outputs/output_features_selected/data]
       command:
       - sh
       - -c
       - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2' 'protobuf==3.19.0'
+        'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1' 'protobuf==3.19.0'
         'numpy' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
-        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.0.2'
+        --no-warn-script-location 'joblib==1.1.0' 'mlflow' 'pandas==1.4.2' 'scikit-learn==1.1.1'
         'protobuf==3.19.0' 'numpy' --user) && "$0" "$@"
       - sh
       - -ec
@@ -3005,39 +3211,79 @@ spec:
       - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
         \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
         \ndef train_model(file_path_x_train, \n                file_path_y_train,\n\
-        \                param_random_seed,\n                output_model):\n    import\
-        \ joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas\
-        \ as pd\n    from sklearn.linear_model import LogisticRegression\n    from\
-        \ sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
+        \                param_random_seed,\n                feature_selection_method,\n\
+        \                output_model,\n                output_features_selected):\n\
+        \    import joblib\n    import numpy as np\n    import mlflow.sklearn\n  \
+        \  import pandas as pd\n    from sklearn.linear_model import LogisticRegression\n\
+        \    from sklearn import preprocessing\n\n    from sklearn.feature_selection\
+        \ import chi2, RFE, SelectKBest, SelectPercentile, \\\n                  \
+        \                        SequentialFeatureSelector, VarianceThreshold\n\n\
+        \    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\
         \n    X_train = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\
         \n#     lb = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n\
         #     y_class_labels = lb.classes_ #\n#     print('y_class_labels: ', y_class_labels)\
         \ #\n#     y_train = lb.fit_transform(y_train_raw.astype(str))    \n\n   \
-        \ y_train=y_train_raw\n\n    model = LogisticRegression(verbose=1,\n     \
-        \                          penalty='l2',\n                               tol=1e-4,\n\
-        \                               C=1.0,\n                               class_weight='balanced',\n\
-        \                               solver='lbfgs',\n                        \
-        \       multi_class='ovr')\n    model.fit(X_train, y_train)\n\n    mlflow.sklearn.save_model(model,\
-        \ output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
+        \ y_train=y_train_raw\n\n    # feature selection\n    ## define feature selection\
+        \ method\n    if feature_selection_method == 'VarianceThreshold':\n      \
+        \  feature_selector = VarianceThreshold(threshold=(.8 * (1 - .8)))\n     \
+        \   X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif feature_selection_method\
+        \ == 'f_classif':\n        feature_selector = SelectPercentile(percentile=20)\n\
+        \        X_train_after_fs = feature_selector.fit_transform(X_train, y_train)\n\
+        \    elif feature_selection_method == 'chi2': # NOTE: need to have non-negative\
+        \ features (e.g., binary, count)\n        feature_selector = SelectPercentile(chi2,\
+        \ percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    elif feature_selection_method == 'SequentialFeatureSelector_backward':\n\
+        \        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='backward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    elif feature_selection_method\
+        \ == 'SequentialFeatureSelector_forward':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n\
+        \                                                 n_features_to_select = 'auto',\n\
+        \                                                 cv =10,\n              \
+        \                                   direction ='forward')\n        feature_selector.fit(X_train,\
+        \ y_train)\n        X_train.columns[feature_selector.get_support()]\n    \
+        \    X_train_after_fs = feature_selector.transform(X_train)\n    else: # set\
+        \ default FS method (choose all fx) if none of the coded FS methods are used\
+        \ as input\n        feature_selector = SelectKBest(k='all') # by default,\
+        \ choose all features i.e., k='all'\n        X_train_after_fs = feature_selector.fit_transform(X_train,\
+        \ y_train)\n    features_selected = feature_selector.get_feature_names_out(X_train.columns)\n\
+        \    df_features_selected = pd.DataFrame(features_selected).rename(columns={0:\
+        \ \"feature_selected\"})\n    print(\"features selected:\", list(df_features_selected['feature_selected']))\n\
+        \n    # fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n\
+        \                               penalty='l2',\n                          \
+        \     tol=1e-4,\n                               C=1.0,\n                 \
+        \              class_weight='balanced',\n                               solver='lbfgs',\n\
+        \                               multi_class='ovr')\n    model.fit(X_train_after_fs,\
+        \ y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n\
+        \                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\
         \n    # log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\"\
-        )\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train model',\
-        \ description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"file_path_x_train\"\
-        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --file-path-y-train\", dest=\"file_path_y_train\", type=str, required=True,\
-        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\"\
-        , dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        )\n\n    # save features\n    df_features_selected.to_csv(output_features_selected,\
+        \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train\
+        \ model', description='')\n_parser.add_argument(\"--file-path-x-train\", dest=\"\
+        file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--file-path-y-train\", dest=\"file_path_y_train\",\
+        \ type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --param-random-seed\", dest=\"param_random_seed\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\"\
+        , dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n\
         _parser.add_argument(\"--output-model\", dest=\"output_model\", type=_make_parent_dirs_and_return_path,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\"\
+        , dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,\
         \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
         \n_outputs = train_model(**_parsed_args)\n"
       image: python:3.9
     inputs:
       parameters:
+      - {name: feature_selection_method}
       - {name: param_random_seed}
       artifacts:
       - {name: create-model-inputs-3-output_X_train, path: /tmp/inputs/file_path_x_train/data}
       - {name: create-model-inputs-3-output_y_train, path: /tmp/inputs/file_path_y_train/data}
     outputs:
       artifacts:
+      - {name: train-model-3-output_features_selected, path: /tmp/outputs/output_features_selected/data}
       - {name: train-model-3-output_model, path: /tmp/outputs/output_model/data}
     metadata:
       labels:
@@ -3047,42 +3293,75 @@ spec:
       annotations: {pipelines.kubeflow.org/component_spec: '{"implementation": {"container":
           {"args": ["--file-path-x-train", {"inputPath": "file_path_x_train"}, "--file-path-y-train",
           {"inputPath": "file_path_y_train"}, "--param-random-seed", {"inputValue":
-          "param_random_seed"}, "--output-model", {"outputPath": "output_model"}],
-          "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip
-          install --quiet --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
-          ''scikit-learn==1.0.2'' ''protobuf==3.19.0'' ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1
+          "param_random_seed"}, "--feature-selection-method", {"inputValue": "feature_selection_method"},
+          "--output-model", {"outputPath": "output_model"}, "--output-features-selected",
+          {"outputPath": "output_features_selected"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
           python3 -m pip install --quiet --no-warn-script-location ''joblib==1.1.0''
-          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.0.2'' ''protobuf==3.19.0''
-          ''numpy'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
-          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef train_model(file_path_x_train,
-          \n                file_path_y_train,\n                param_random_seed,\n                output_model):\n    import
+          ''mlflow'' ''pandas==1.4.2'' ''scikit-learn==1.1.1'' ''protobuf==3.19.0''
+          ''numpy'' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet
+          --no-warn-script-location ''joblib==1.1.0'' ''mlflow'' ''pandas==1.4.2''
+          ''scikit-learn==1.1.1'' ''protobuf==3.19.0'' ''numpy'' --user) && \"$0\"
+          \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def _make_parent_dirs_and_return_path(file_path:
+          str):\n    import os\n    os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return
+          file_path\n\ndef train_model(file_path_x_train, \n                file_path_y_train,\n                param_random_seed,\n                feature_selection_method,\n                output_model,\n                output_features_selected):\n    import
           joblib\n    import numpy as np\n    import mlflow.sklearn\n    import pandas
           as pd\n    from sklearn.linear_model import LogisticRegression\n    from
-          sklearn import preprocessing\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
+          sklearn import preprocessing\n\n    from sklearn.feature_selection import
+          chi2, RFE, SelectKBest, SelectPercentile, \\\n                                          SequentialFeatureSelector,
+          VarianceThreshold\n\n    # set the seed\n    np.random.seed(int(np.float64(param_random_seed)))\n\n    X_train
           = pd.read_csv(file_path_x_train)\n    y_train_raw = pd.read_csv(file_path_y_train)\n\n#     lb
           = preprocessing.LabelBinarizer()\n#     lb.fit_transform(y_train_raw.astype(str))\n#     y_class_labels
           = lb.classes_ #\n#     print(''y_class_labels: '', y_class_labels) #\n#     y_train
-          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    model
-          = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train,
-          y_train)\n\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
-          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\nimport
-          argparse\n_parser = argparse.ArgumentParser(prog=''Train model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
+          = lb.fit_transform(y_train_raw.astype(str))    \n\n    y_train=y_train_raw\n\n    #
+          feature selection\n    ## define feature selection method\n    if feature_selection_method
+          == ''VarianceThreshold'':\n        feature_selector = VarianceThreshold(threshold=(.8
+          * (1 - .8)))\n        X_train_after_fs = feature_selector.fit_transform(X_train)\n    elif
+          feature_selection_method == ''f_classif'':\n        feature_selector = SelectPercentile(percentile=20)\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    elif feature_selection_method
+          == ''chi2'': # NOTE: need to have non-negative features (e.g., binary, count)\n        feature_selector
+          = SelectPercentile(chi2, percentile=20)\n        X_train_after_fs = feature_selector.fit_transform(X_train,
+          y_train)\n    elif feature_selection_method == ''SequentialFeatureSelector_backward'':\n        feature_selector
+          = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''backward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    elif feature_selection_method
+          == ''SequentialFeatureSelector_forward'':\n        feature_selector = SequentialFeatureSelector(estimator=LogisticRegression(),\n                                                 n_features_to_select
+          = ''auto'',\n                                                 cv =10,\n                                                 direction
+          =''forward'')\n        feature_selector.fit(X_train, y_train)\n        X_train.columns[feature_selector.get_support()]\n        X_train_after_fs
+          = feature_selector.transform(X_train)\n    else: # set default FS method
+          (choose all fx) if none of the coded FS methods are used as input\n        feature_selector
+          = SelectKBest(k=''all'') # by default, choose all features i.e., k=''all''\n        X_train_after_fs
+          = feature_selector.fit_transform(X_train, y_train)\n    features_selected
+          = feature_selector.get_feature_names_out(X_train.columns)\n    df_features_selected
+          = pd.DataFrame(features_selected).rename(columns={0: \"feature_selected\"})\n    print(\"features
+          selected:\", list(df_features_selected[''feature_selected'']))\n\n    #
+          fit model\n    ## define model\n    model = LogisticRegression(verbose=1,\n                               penalty=''l2'',\n                               tol=1e-4,\n                               C=1.0,\n                               class_weight=''balanced'',\n                               solver=''lbfgs'',\n                               multi_class=''ovr'')\n    model.fit(X_train_after_fs,
+          y_train)\n\n    # save model\n    mlflow.sklearn.save_model(model, output_model,\n                          serialization_format=mlflow.sklearn.SERIALIZATION_FORMAT_PICKLE)\n\n    #
+          log model\n    mlflow.sklearn.log_model(model, \"sklearn_models\")\n\n    #
+          save features\n    df_features_selected.to_csv(output_features_selected,
+          index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Train
+          model'', description='''')\n_parser.add_argument(\"--file-path-x-train\",
           dest=\"file_path_x_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-y-train\",
           dest=\"file_path_y_train\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--param-random-seed\",
-          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
+          dest=\"param_random_seed\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--feature-selection-method\",
+          dest=\"feature_selection_method\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-model\",
           dest=\"output_model\", type=_make_parent_dirs_and_return_path, required=True,
-          default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
+          default=argparse.SUPPRESS)\n_parser.add_argument(\"--output-features-selected\",
+          dest=\"output_features_selected\", type=_make_parent_dirs_and_return_path,
+          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
           = train_model(**_parsed_args)\n"], "image": "python:3.9"}}, "inputs": [{"name":
           "file_path_x_train", "type": "CSV"}, {"name": "file_path_y_train", "type":
-          "CSV"}, {"name": "param_random_seed", "type": "String"}], "name": "Train
-          model", "outputs": [{"name": "output_model", "type": "Model"}]}', pipelines.kubeflow.org/component_ref: '{}',
-        pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
+          "CSV"}, {"name": "param_random_seed", "type": "String"}, {"name": "feature_selection_method",
+          "type": "String"}], "name": "Train model", "outputs": [{"name": "output_model",
+          "type": "Model"}, {"name": "output_features_selected", "type": "CSV"}]}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"feature_selection_method":
+          "{{inputs.parameters.feature_selection_method}}", "param_random_seed": "{{inputs.parameters.param_random_seed}}"}'}
   arguments:
     parameters:
     - {name: user_input_class_label_column_name}
     - {name: s_colnames_to_exclude}
     - {name: test_set_size}
     - {name: param_random_seed}
+    - {name: feature_selection_method}
   serviceAccountName: pipeline-runner
