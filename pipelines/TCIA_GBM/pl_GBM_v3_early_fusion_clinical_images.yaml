@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v3-early-fusion-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-06-01T09:16:36.412437',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-06-02T12:20:56.078367',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -276,10 +276,16 @@ spec:
         \    sys.path.append('/usr/local/lib/python3.7/site-packages')\n    sys.path.append('/usr/local')\n\
         \    sys.path.append('/root/.local')\n    sys.path.append('/usr/local/bin')\n\
         \    sys.path.append('/root/.local/bin')\n    print(sys.path)\n    print(os.listdir('/usr/local/lib/python3.9/site-packages/histomicstk/segmentation/label/'))\n\
-        \    import histomicstk.segmentation.positive_pixel_count as ppc\n\n    import\
-        \ json\n    from collections import OrderedDict\n    import numpy as np\n\
-        \    import pandas as pd\n\n    import large_image\n    import skimage.io\n\
-        \    from skimage.filters import prewitt_h,prewitt_v\n    from sklearn.model_selection\
+        \    import histomicstk.segmentation.positive_pixel_count as ppc\n\n    #\
+        \ needed for nuclei segmentation / features\n    import histomicstk as htk\n\
+        \    import scipy as sp\n    import skimage.io\n    import skimage.measure\n\
+        \    import skimage.color\n    from histomicstk.features import compute_global_cell_graph_features,\
+        \ compute_nuclei_features, \\\n                                 compute_gradient_features,\
+        \ compute_haralick_features,compute_intensity_features, \\\n             \
+        \                    compute_morphometry_features\n\n    import json\n   \
+        \ from collections import OrderedDict\n    import numpy as np\n    import\
+        \ pandas as pd\n\n    import large_image\n    import skimage.io\n    from\
+        \ skimage.filters import prewitt_h,prewitt_v\n    from sklearn.model_selection\
         \ import train_test_split\n\n    # open images\n\n    with open(file_path_images,\
         \ \"r\") as read_file:\n        d_images_from_pl = json.load(read_file)\n\n\
         \    # compute histomicstk features\n\n    # make d_features and add all ppc-related\
@@ -292,13 +298,60 @@ spec:
         \    intensity_weak_threshold=0.65,\n    intensity_strong_threshold=0.35,\n\
         \    intensity_lower_limit=0.05)\n\n    image_url = ('https://data.kitware.com/api/v1/file/'\n\
         \                 '598b71ee8d777f7d33e9c1d4/download')  # DAB.png\n    img_input_sample\
-        \ = skimage.io.imread(image_url)\n\n    ## compute for each patient's image\n\
-        \    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID in l_ptID:\n\
-        \        img = np.array(\n                d_images_from_pl[\n            \
-        \        ptID]\n                        [0] # use the first image for the\
-        \ pt\n                )\n        # feature extraction  \n        try:\n  \
-        \          stats, label_image = ppc.count_image(img, template_params)\n  \
-        \      except: ## Placeholder - use NaN for any time ppc will not compute\n\
+        \ = skimage.io.imread(image_url)\n\n    def compute_nuclei_features_from_image(im_input):\n\
+        \        \"\"\"\n        Wrapper for histomicstk features:\n            -\
+        \ histomicstk.features.compute_global_cell_graph_features()\n            -\
+        \ histomicstk.features.compute_nuclei_features()\n        \"\"\"\n       \
+        \ # normalization ----------------------------------------\n        # Load\
+        \ reference image for normalization \n        ref_image_file = ('https://data.kitware.com/api/v1/file/'\n\
+        \                          '57718cc28d777f1ecd8a883c/download')  # L1.png\n\
+        \n        im_reference = skimage.io.imread(ref_image_file)[:, :, :3]\n\n \
+        \       # get mean and stddev of reference image in lab space\n        mean_ref,\
+        \ std_ref = htk.preprocessing.color_conversion.lab_mean_std(im_reference)\n\
+        \n        # perform reinhard color normalization\n        im_nmzd = htk.preprocessing.color_normalization.reinhard(im_input,\
+        \ mean_ref, std_ref)\n\n        # color deconvolution ----------------------------------------\n\
+        \        # create stain to color map\n        stainColorMap = {\n        \
+        \    'hematoxylin': [0.65, 0.70, 0.29],\n            'eosin':       [0.07,\
+        \ 0.99, 0.11],\n            'dab':         [0.27, 0.57, 0.78],\n         \
+        \   'null':        [0.0, 0.0, 0.0]\n        }\n\n        # specify stains\
+        \ of input image\n        stain_1 = 'hematoxylin'   # nuclei stain\n     \
+        \   stain_2 = 'eosin'         # cytoplasm stain\n        stain_3 = 'null'\
+        \          # set to null of input contains only two stains\n\n        # create\
+        \ stain matrix\n        W = np.array([stainColorMap[stain_1],\n          \
+        \            stainColorMap[stain_2],\n                      stainColorMap[stain_3]]).T\n\
+        \n        # perform standard color deconvolution\n        im_stains = htk.preprocessing.color_deconvolution.color_deconvolution(im_nmzd,\
+        \ W).Stains\n\n        # segment nuclei ----------------------------------------\n\
+        \        # get nuclei/hematoxylin channel\n        im_nuclei_stain = im_stains[:,\
+        \ :, 0]\n\n        # segment foreground\n        foreground_threshold = 60\n\
+        \n        im_fgnd_mask = sp.ndimage.morphology.binary_fill_holes(\n      \
+        \      im_nuclei_stain < foreground_threshold)\n\n        # run adaptive multi-scale\
+        \ LoG filter\n        min_radius = 10\n        max_radius = 15\n\n       \
+        \ im_log_max, im_sigma_max = htk.filters.shape.cdog(\n            im_nuclei_stain,\
+        \ im_fgnd_mask,\n            sigma_min=min_radius * np.sqrt(2),\n        \
+        \    sigma_max=max_radius * np.sqrt(2)\n        )\n\n        # detect and\
+        \ segment nuclei using local maximum clustering\n        local_max_search_radius\
+        \ = 10\n\n        im_nuclei_seg_mask, seeds, maxima = htk.segmentation.nuclear.max_clustering(\n\
+        \            im_log_max, im_fgnd_mask, local_max_search_radius)\n\n      \
+        \  # filter out small objects\n        min_nucleus_area = 80\n\n        im_nuclei_seg_mask\
+        \ = htk.segmentation.label.area_open(\n            im_nuclei_seg_mask, min_nucleus_area).astype(np.int)\n\
+        \n        # compute nuclei properties\n        objProps = skimage.measure.regionprops(im_nuclei_seg_mask)\n\
+        \n        print('Number of nuclei = ', len(objProps))\n\n        # isolate\
+        \ centroids\n        centroids = np.array([objProps[i].centroid for i in list(range(len(objProps)))])\n\
+        \n        ###### COMPUTE FEATURES #######\n        # compute global cell graph\
+        \ features\n        df_compute_global_cell_graph_features = compute_global_cell_graph_features(centroids)\n\
+        \n        # compute nuclei features\n        df_compute_nuclei_features =\
+        \ compute_nuclei_features(im_label=im_nuclei_seg_mask,\n                 \
+        \               im_nuclei=im_nuclei_stain\n                              \
+        \ )\n        ## MEAN of nuclei features\n        df_compute_nuclei_features_MEAN\
+        \ = pd.DataFrame(np.mean(df_compute_nuclei_features)).T\n\n        ######\
+        \ RETURN ########\n        return df_compute_global_cell_graph_features, df_compute_nuclei_features_MEAN\n\
+        \n    ## compute for each patient's image - using histomicstk\n    l_ptID\
+        \ = np.sort(list(d_images_from_pl.keys()))\n    for ptID in l_ptID:\n    \
+        \    img = np.array(\n                d_images_from_pl[\n                \
+        \    ptID]\n                        [0] # use the first image for the pt\n\
+        \                )\n        # feature extraction: PPC\n        try:\n    \
+        \        stats, label_image = ppc.count_image(img, template_params)\n    \
+        \    except: ## Placeholder - use NaN for any time ppc will not compute\n\
         \            stats = ppc.Output(NumberWeakPositive=np.nan,\n             \
         \                    NumberPositive=np.nan,\n                            \
         \     NumberStrongPositive=np.nan, \n                                 IntensitySumWeakPositive=np.nan,\n\
@@ -312,8 +365,29 @@ spec:
         \        d_features['IntensityAverage'].append(stats.IntensityAverage)\n \
         \       d_features['RatioStrongToTotal'].append(stats.RatioStrongToTotal)\n\
         \        d_features['IntensityAverageWeakAndPositive'].append(stats.IntensityAverageWeakAndPositive)\n\
+        \n        im_input = img\n\n        # compute nuclei-related features (global\
+        \ cell graph features + nuclei-specific features)\n        try:\n        \
+        \    t_nuclei_related_features = compute_nuclei_features_from_image(im_input)\n\
+        \        except:\n            # use a sample image that is known to work,\
+        \ grab colnames, replace values with nan\n            sample_input_image_file_with_enough_nuclei\
+        \ = ('https://data.kitware.com/api/v1/file/'\n                           \
+        \     '576ad39b8d777f1ecd6702f2/download')  # Easy1.png\n            im_input\
+        \ = skimage.io.imread(sample_input_image_file_with_enough_nuclei)[:, :, :3]\n\
+        \            t_nuclei_related_features = compute_nuclei_features_from_image(im_input)\n\
+        \            # replace values with NaN - for both components of `compute_nuclei_features_from_image`\
+        \ function output\n            t_nuclei_related_features[0][:] = np.full(t_nuclei_related_features[0].values.shape,\
+        \ np.nan)\n            t_nuclei_related_features[1][:] = np.full(t_nuclei_related_features[1].values.shape,\
+        \ np.nan)\n\n        # TODO: APPEND this patient's features to master feature\
+        \ dict\n        for feature_name in t_nuclei_related_features[0].columns:\n\
+        \            if \"GLOBALCELLGRAPHFX_\" + feature_name not in d_features:\n\
+        \                d_features[\"GLOBALCELLGRAPHFX_\" + feature_name] = []\n\
+        \            d_features[\"GLOBALCELLGRAPHFX_\" + feature_name].append(t_nuclei_related_features[0].iloc[0][feature_name])\n\
+        \        for feature_name in t_nuclei_related_features[1].columns:\n     \
+        \       if \"NUCLEISPECIFICFX_\" + feature_name not in d_features:\n     \
+        \           d_features[\"NUCLEISPECIFICFX_\" + feature_name] = []\n      \
+        \      d_features[\"NUCLEISPECIFICFX_\" + feature_name].append(t_nuclei_related_features[1].iloc[0][feature_name])\n\
         \n    ##########################################\n\n    # compute features\
-        \ and append to d_features - skimage\n    d_features[\"mean_weight_raw_img\"\
+        \ and append to d_features - using skimage library \n    d_features[\"mean_weight_raw_img\"\
         ] = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"\
         mean_edge_weight_vertical\"] = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n\
         \    for ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n\
@@ -438,28 +512,90 @@ spec:
           importlib\n    #          globals()[package] = importlib.import_module(package)\n    #
           Note: python does not add it to path automatically, so need to add sys.path.append(site.getusersitepackages())\n    #    https://kubeflow-pipelines.readthedocs.io/en/stable/_modules/kfp/components/_python_op.html\n    #   \n    ##################################################################################\n\n    import
           site\n    sys.path.append(site.getusersitepackages())\n    sys.path.append(''/root/.local/lib/python3.10/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.10/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.9/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.9/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.8/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.8/site-packages'')\n    sys.path.append(''/root/.local/lib/python3.7/site-packages'')\n    sys.path.append(''/usr/local/lib/python3.7/site-packages'')\n    sys.path.append(''/usr/local'')\n    sys.path.append(''/root/.local'')\n    sys.path.append(''/usr/local/bin'')\n    sys.path.append(''/root/.local/bin'')\n    print(sys.path)\n    print(os.listdir(''/usr/local/lib/python3.9/site-packages/histomicstk/segmentation/label/''))\n    import
-          histomicstk.segmentation.positive_pixel_count as ppc\n\n    import json\n    from
-          collections import OrderedDict\n    import numpy as np\n    import pandas
-          as pd\n\n    import large_image\n    import skimage.io\n    from skimage.filters
-          import prewitt_h,prewitt_v\n    from sklearn.model_selection import train_test_split\n\n    #
-          open images\n\n    with open(file_path_images, \"r\") as read_file:\n        d_images_from_pl
-          = json.load(read_file)\n\n    # compute histomicstk features\n\n    # make
-          d_features and add all ppc-related features\n    d_features = OrderedDict()\n    d_features[''IntensitySumWeakPositive'']
+          histomicstk.segmentation.positive_pixel_count as ppc\n\n    # needed for
+          nuclei segmentation / features\n    import histomicstk as htk\n    import
+          scipy as sp\n    import skimage.io\n    import skimage.measure\n    import
+          skimage.color\n    from histomicstk.features import compute_global_cell_graph_features,
+          compute_nuclei_features, \\\n                                 compute_gradient_features,
+          compute_haralick_features,compute_intensity_features, \\\n                                 compute_morphometry_features\n\n    import
+          json\n    from collections import OrderedDict\n    import numpy as np\n    import
+          pandas as pd\n\n    import large_image\n    import skimage.io\n    from
+          skimage.filters import prewitt_h,prewitt_v\n    from sklearn.model_selection
+          import train_test_split\n\n    # open images\n\n    with open(file_path_images,
+          \"r\") as read_file:\n        d_images_from_pl = json.load(read_file)\n\n    #
+          compute histomicstk features\n\n    # make d_features and add all ppc-related
+          features\n    d_features = OrderedDict()\n    d_features[''IntensitySumWeakPositive'']
           = []\n    d_features[''IntensitySumPositive''] = []\n    d_features[''IntensitySumStrongPositive'']
           = []\n    d_features[''IntensityAverage''] = []\n    d_features[''RatioStrongToTotal'']
           = []\n    d_features[''IntensityAverageWeakAndPositive''] = []\n\n    ##
           set template params\n    template_params = ppc.Parameters(\n    hue_value=0.05,\n    hue_width=9999,\n    saturation_minimum=0.05,\n    intensity_upper_limit=0.95,\n    intensity_weak_threshold=0.65,\n    intensity_strong_threshold=0.35,\n    intensity_lower_limit=0.05)\n\n    image_url
           = (''https://data.kitware.com/api/v1/file/''\n                 ''598b71ee8d777f7d33e9c1d4/download'')  #
-          DAB.png\n    img_input_sample = skimage.io.imread(image_url)\n\n    ## compute
-          for each patient''s image\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for
+          DAB.png\n    img_input_sample = skimage.io.imread(image_url)\n\n    def
+          compute_nuclei_features_from_image(im_input):\n        \"\"\"\n        Wrapper
+          for histomicstk features:\n            - histomicstk.features.compute_global_cell_graph_features()\n            -
+          histomicstk.features.compute_nuclei_features()\n        \"\"\"\n        #
+          normalization ----------------------------------------\n        # Load reference
+          image for normalization \n        ref_image_file = (''https://data.kitware.com/api/v1/file/''\n                          ''57718cc28d777f1ecd8a883c/download'')  #
+          L1.png\n\n        im_reference = skimage.io.imread(ref_image_file)[:, :,
+          :3]\n\n        # get mean and stddev of reference image in lab space\n        mean_ref,
+          std_ref = htk.preprocessing.color_conversion.lab_mean_std(im_reference)\n\n        #
+          perform reinhard color normalization\n        im_nmzd = htk.preprocessing.color_normalization.reinhard(im_input,
+          mean_ref, std_ref)\n\n        # color deconvolution ----------------------------------------\n        #
+          create stain to color map\n        stainColorMap = {\n            ''hematoxylin'':
+          [0.65, 0.70, 0.29],\n            ''eosin'':       [0.07, 0.99, 0.11],\n            ''dab'':         [0.27,
+          0.57, 0.78],\n            ''null'':        [0.0, 0.0, 0.0]\n        }\n\n        #
+          specify stains of input image\n        stain_1 = ''hematoxylin''   # nuclei
+          stain\n        stain_2 = ''eosin''         # cytoplasm stain\n        stain_3
+          = ''null''          # set to null of input contains only two stains\n\n        #
+          create stain matrix\n        W = np.array([stainColorMap[stain_1],\n                      stainColorMap[stain_2],\n                      stainColorMap[stain_3]]).T\n\n        #
+          perform standard color deconvolution\n        im_stains = htk.preprocessing.color_deconvolution.color_deconvolution(im_nmzd,
+          W).Stains\n\n        # segment nuclei ----------------------------------------\n        #
+          get nuclei/hematoxylin channel\n        im_nuclei_stain = im_stains[:, :,
+          0]\n\n        # segment foreground\n        foreground_threshold = 60\n\n        im_fgnd_mask
+          = sp.ndimage.morphology.binary_fill_holes(\n            im_nuclei_stain
+          < foreground_threshold)\n\n        # run adaptive multi-scale LoG filter\n        min_radius
+          = 10\n        max_radius = 15\n\n        im_log_max, im_sigma_max = htk.filters.shape.cdog(\n            im_nuclei_stain,
+          im_fgnd_mask,\n            sigma_min=min_radius * np.sqrt(2),\n            sigma_max=max_radius
+          * np.sqrt(2)\n        )\n\n        # detect and segment nuclei using local
+          maximum clustering\n        local_max_search_radius = 10\n\n        im_nuclei_seg_mask,
+          seeds, maxima = htk.segmentation.nuclear.max_clustering(\n            im_log_max,
+          im_fgnd_mask, local_max_search_radius)\n\n        # filter out small objects\n        min_nucleus_area
+          = 80\n\n        im_nuclei_seg_mask = htk.segmentation.label.area_open(\n            im_nuclei_seg_mask,
+          min_nucleus_area).astype(np.int)\n\n        # compute nuclei properties\n        objProps
+          = skimage.measure.regionprops(im_nuclei_seg_mask)\n\n        print(''Number
+          of nuclei = '', len(objProps))\n\n        # isolate centroids\n        centroids
+          = np.array([objProps[i].centroid for i in list(range(len(objProps)))])\n\n        ######
+          COMPUTE FEATURES #######\n        # compute global cell graph features\n        df_compute_global_cell_graph_features
+          = compute_global_cell_graph_features(centroids)\n\n        # compute nuclei
+          features\n        df_compute_nuclei_features = compute_nuclei_features(im_label=im_nuclei_seg_mask,\n                                im_nuclei=im_nuclei_stain\n                               )\n        ##
+          MEAN of nuclei features\n        df_compute_nuclei_features_MEAN = pd.DataFrame(np.mean(df_compute_nuclei_features)).T\n\n        ######
+          RETURN ########\n        return df_compute_global_cell_graph_features, df_compute_nuclei_features_MEAN\n\n    ##
+          compute for each patient''s image - using histomicstk\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for
           ptID in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
-          # use the first image for the pt\n                )\n        # feature extraction  \n        try:\n            stats,
-          label_image = ppc.count_image(img, template_params)\n        except: ##
-          Placeholder - use NaN for any time ppc will not compute\n            stats
-          = ppc.Output(NumberWeakPositive=np.nan,\n                                 NumberPositive=np.nan,\n                                 NumberStrongPositive=np.nan,
+          # use the first image for the pt\n                )\n        # feature extraction:
+          PPC\n        try:\n            stats, label_image = ppc.count_image(img,
+          template_params)\n        except: ## Placeholder - use NaN for any time
+          ppc will not compute\n            stats = ppc.Output(NumberWeakPositive=np.nan,\n                                 NumberPositive=np.nan,\n                                 NumberStrongPositive=np.nan,
           \n                                 IntensitySumWeakPositive=np.nan,\n                                 IntensitySumPositive=np.nan,\n                                 IntensitySumStrongPositive=np.nan,\n                                 IntensityAverage=np.nan,\n                                 RatioStrongToTotal=np.nan,
-          \n                                 IntensityAverageWeakAndPositive=np.nan)\n\n        d_features[''IntensitySumWeakPositive''].append(stats.IntensitySumWeakPositive)\n        d_features[''IntensitySumPositive''].append(stats.IntensitySumPositive)\n        d_features[''IntensitySumStrongPositive''].append(stats.IntensitySumStrongPositive)\n        d_features[''IntensityAverage''].append(stats.IntensityAverage)\n        d_features[''RatioStrongToTotal''].append(stats.RatioStrongToTotal)\n        d_features[''IntensityAverageWeakAndPositive''].append(stats.IntensityAverageWeakAndPositive)\n\n    ##########################################\n\n    #
-          compute features and append to d_features - skimage\n    d_features[\"mean_weight_raw_img\"]
+          \n                                 IntensityAverageWeakAndPositive=np.nan)\n\n        d_features[''IntensitySumWeakPositive''].append(stats.IntensitySumWeakPositive)\n        d_features[''IntensitySumPositive''].append(stats.IntensitySumPositive)\n        d_features[''IntensitySumStrongPositive''].append(stats.IntensitySumStrongPositive)\n        d_features[''IntensityAverage''].append(stats.IntensityAverage)\n        d_features[''RatioStrongToTotal''].append(stats.RatioStrongToTotal)\n        d_features[''IntensityAverageWeakAndPositive''].append(stats.IntensityAverageWeakAndPositive)\n\n        im_input
+          = img\n\n        # compute nuclei-related features (global cell graph features
+          + nuclei-specific features)\n        try:\n            t_nuclei_related_features
+          = compute_nuclei_features_from_image(im_input)\n        except:\n            #
+          use a sample image that is known to work, grab colnames, replace values
+          with nan\n            sample_input_image_file_with_enough_nuclei = (''https://data.kitware.com/api/v1/file/''\n                                ''576ad39b8d777f1ecd6702f2/download'')  #
+          Easy1.png\n            im_input = skimage.io.imread(sample_input_image_file_with_enough_nuclei)[:,
+          :, :3]\n            t_nuclei_related_features = compute_nuclei_features_from_image(im_input)\n            #
+          replace values with NaN - for both components of `compute_nuclei_features_from_image`
+          function output\n            t_nuclei_related_features[0][:] = np.full(t_nuclei_related_features[0].values.shape,
+          np.nan)\n            t_nuclei_related_features[1][:] = np.full(t_nuclei_related_features[1].values.shape,
+          np.nan)\n\n        # TODO: APPEND this patient''s features to master feature
+          dict\n        for feature_name in t_nuclei_related_features[0].columns:\n            if
+          \"GLOBALCELLGRAPHFX_\" + feature_name not in d_features:\n                d_features[\"GLOBALCELLGRAPHFX_\"
+          + feature_name] = []\n            d_features[\"GLOBALCELLGRAPHFX_\" + feature_name].append(t_nuclei_related_features[0].iloc[0][feature_name])\n        for
+          feature_name in t_nuclei_related_features[1].columns:\n            if \"NUCLEISPECIFICFX_\"
+          + feature_name not in d_features:\n                d_features[\"NUCLEISPECIFICFX_\"
+          + feature_name] = []\n            d_features[\"NUCLEISPECIFICFX_\" + feature_name].append(t_nuclei_related_features[1].iloc[0][feature_name])\n\n    ##########################################\n\n    #
+          compute features and append to d_features - using skimage library \n    d_features[\"mean_weight_raw_img\"]
           = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"]
           = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID
           in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
@@ -1466,7 +1602,7 @@ spec:
             df = pd.read_csv(filepath_or_buffer=file_path)
 
             # Impute: most common
-            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
+            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='constant')
             imp_most_frequent.fit(df)
             nparr_imputed = imp_most_frequent.transform(df)
             df_imputed = pd.DataFrame(nparr_imputed)
@@ -1510,7 +1646,7 @@ spec:
           pandas as pd\n    from sklearn.impute import SimpleImputer\n\n    # Read
           in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Impute:
           most common\n    imp_most_frequent = SimpleImputer(missing_values=np.nan,
-          strategy=''most_frequent'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
+          strategy=''constant'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
           = imp_most_frequent.transform(df)\n    df_imputed = pd.DataFrame(nparr_imputed)\n    df_imputed.columns
           = df.columns\n\n    # Output to CSV\n    df_imputed.to_csv(output_csv, index
           = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Impute
@@ -1563,7 +1699,7 @@ spec:
             df = pd.read_csv(filepath_or_buffer=file_path)
 
             # Impute: most common
-            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
+            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='constant')
             imp_most_frequent.fit(df)
             nparr_imputed = imp_most_frequent.transform(df)
             df_imputed = pd.DataFrame(nparr_imputed)
@@ -1607,7 +1743,7 @@ spec:
           pandas as pd\n    from sklearn.impute import SimpleImputer\n\n    # Read
           in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Impute:
           most common\n    imp_most_frequent = SimpleImputer(missing_values=np.nan,
-          strategy=''most_frequent'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
+          strategy=''constant'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
           = imp_most_frequent.transform(df)\n    df_imputed = pd.DataFrame(nparr_imputed)\n    df_imputed.columns
           = df.columns\n\n    # Output to CSV\n    df_imputed.to_csv(output_csv, index
           = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Impute
@@ -1660,7 +1796,7 @@ spec:
             df = pd.read_csv(filepath_or_buffer=file_path)
 
             # Impute: most common
-            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
+            imp_most_frequent = SimpleImputer(missing_values=np.nan, strategy='constant')
             imp_most_frequent.fit(df)
             nparr_imputed = imp_most_frequent.transform(df)
             df_imputed = pd.DataFrame(nparr_imputed)
@@ -1704,7 +1840,7 @@ spec:
           pandas as pd\n    from sklearn.impute import SimpleImputer\n\n    # Read
           in CSV\n    df = pd.read_csv(filepath_or_buffer=file_path)\n\n    # Impute:
           most common\n    imp_most_frequent = SimpleImputer(missing_values=np.nan,
-          strategy=''most_frequent'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
+          strategy=''constant'')\n    imp_most_frequent.fit(df)\n    nparr_imputed
           = imp_most_frequent.transform(df)\n    df_imputed = pd.DataFrame(nparr_imputed)\n    df_imputed.columns
           = df.columns\n\n    # Output to CSV\n    df_imputed.to_csv(output_csv, index
           = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Impute
