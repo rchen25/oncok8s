@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v3-early-fusion-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.13, pipelines.kubeflow.org/pipeline_compilation_time: '2022-08-20T18:02:13.001870',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.13, pipelines.kubeflow.org/pipeline_compilation_time: '2022-08-20T18:23:07.120181',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -523,8 +523,9 @@ spec:
         \ = train_test_split(df_features_combined, df_class_labels_pts_with_images,\
         \ \n                                                        test_size=param_test_set_size_float,\n\
         \                                                        random_state=param_random_seed_int)\
-        \ # IMPT: set random seed\\\\n \n\n    df_idx_train = pd.DataFrame([])\n \
-        \   df_idx_train['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_train.index]\
+        \ # IMPT: set random seed\\\\n \n\n#    df_idx_train = pd.DataFrame([])\n\
+        \    df_idx_train = X_train.index.to_frame().rename(columns={0: \"index\"\
+        })\n    df_idx_train['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_train.index]\
         \  \n    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"\
         })\n    df_idx_test['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_test.index]\
         \   \n    ## save training and testing splits - to be used for instances where\
@@ -681,7 +682,8 @@ spec:
           = int(np.float64(param_random_seed))\n\n    X_train, X_test, y_train, y_test
           = train_test_split(df_features_combined, df_class_labels_pts_with_images,
           \n                                                        test_size=param_test_set_size_float,\n                                                        random_state=param_random_seed_int)
-          # IMPT: set random seed\\\\n \n\n    df_idx_train = pd.DataFrame([])\n    df_idx_train[''bcr_patient_barcode'']
+          # IMPT: set random seed\\\\n \n\n#    df_idx_train = pd.DataFrame([])\n    df_idx_train
+          = X_train.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_train[''bcr_patient_barcode'']
           = df_slice_full_patient_id_list_have_images.iloc[X_train.index]  \n    df_idx_test
           = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
           = df_slice_full_patient_id_list_have_images.iloc[X_test.index]   \n    ##
@@ -2572,14 +2574,14 @@ spec:
         \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
         \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
         \    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
-        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
-        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
-        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
-        \n    # Get predictions    \n    y_pred = trained_model.predict(X_test)\n\
-        \    #############################################################\n    #\
-        \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion\
-        \ matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC\
-        \ score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
+        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test_raw\
+        \ = pd.read_csv(file_path_y_test)\n    y_test = y_test_raw[y_test_raw.columns[0]]\n\
+        \    ## filter X_test to only include features selected for model\n    X_test\
+        \ = X_test[list(df_features_selected['feature_selected'])]\n\n    # Get predictions\
+        \    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n\
+        \    # Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    #\
+        \ Confusion matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\
+        \    # AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
         \ = np.where(sum_y_test_axis_0 > 0)[0]\n\n    # compute AUC\n    ## check\
         \ if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n\
         \n    if num_classes > 2: # one-hot encode      \n        lb = LabelBinarizer()\n\
@@ -2653,10 +2655,10 @@ spec:
           json.JSONEncoder.default(self, obj)\n\n    # load features selected:\n    df_features_selected
           = pd.read_csv(file_path_features_selected)\n    # load trained model\n    trained_model
           = mlflow.sklearn.load_model(file_path_model)\n    # load test data\n    X_test
-          = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n    ##
-          filter X_test to only include features selected for model\n    X_test =
-          X_test[list(df_features_selected[''feature_selected''])]\n\n    # Get predictions    \n    y_pred
-          = trained_model.predict(X_test)\n    #############################################################\n    #
+          = pd.read_csv(file_path_x_test)\n    y_test_raw = pd.read_csv(file_path_y_test)\n    y_test
+          = y_test_raw[y_test_raw.columns[0]]\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC
           score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -2725,14 +2727,14 @@ spec:
         \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
         \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
         \    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
-        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
-        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
-        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
-        \n    # Get predictions    \n    y_pred = trained_model.predict(X_test)\n\
-        \    #############################################################\n    #\
-        \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion\
-        \ matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC\
-        \ score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
+        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test_raw\
+        \ = pd.read_csv(file_path_y_test)\n    y_test = y_test_raw[y_test_raw.columns[0]]\n\
+        \    ## filter X_test to only include features selected for model\n    X_test\
+        \ = X_test[list(df_features_selected['feature_selected'])]\n\n    # Get predictions\
+        \    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n\
+        \    # Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    #\
+        \ Confusion matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\
+        \    # AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
         \ = np.where(sum_y_test_axis_0 > 0)[0]\n\n    # compute AUC\n    ## check\
         \ if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n\
         \n    if num_classes > 2: # one-hot encode      \n        lb = LabelBinarizer()\n\
@@ -2806,10 +2808,10 @@ spec:
           json.JSONEncoder.default(self, obj)\n\n    # load features selected:\n    df_features_selected
           = pd.read_csv(file_path_features_selected)\n    # load trained model\n    trained_model
           = mlflow.sklearn.load_model(file_path_model)\n    # load test data\n    X_test
-          = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n    ##
-          filter X_test to only include features selected for model\n    X_test =
-          X_test[list(df_features_selected[''feature_selected''])]\n\n    # Get predictions    \n    y_pred
-          = trained_model.predict(X_test)\n    #############################################################\n    #
+          = pd.read_csv(file_path_x_test)\n    y_test_raw = pd.read_csv(file_path_y_test)\n    y_test
+          = y_test_raw[y_test_raw.columns[0]]\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC
           score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
@@ -2878,14 +2880,14 @@ spec:
         \                return obj.tolist()\n            return json.JSONEncoder.default(self,\
         \ obj)\n\n    # load features selected:\n    df_features_selected = pd.read_csv(file_path_features_selected)\n\
         \    # load trained model\n    trained_model = mlflow.sklearn.load_model(file_path_model)\n\
-        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test\
-        \ = np.array(pd.read_csv(file_path_y_test))\n    ## filter X_test to only\
-        \ include features selected for model\n    X_test = X_test[list(df_features_selected['feature_selected'])]\n\
-        \n    # Get predictions    \n    y_pred = trained_model.predict(X_test)\n\
-        \    #############################################################\n    #\
-        \ Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion\
-        \ matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC\
-        \ score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
+        \    # load test data\n    X_test = pd.read_csv(file_path_x_test)\n    y_test_raw\
+        \ = pd.read_csv(file_path_y_test)\n    y_test = y_test_raw[y_test_raw.columns[0]]\n\
+        \    ## filter X_test to only include features selected for model\n    X_test\
+        \ = X_test[list(df_features_selected['feature_selected'])]\n\n    # Get predictions\
+        \    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n\
+        \    # Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    #\
+        \ Confusion matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n\
+        \    # AUC score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz\
         \ = np.where(sum_y_test_axis_0 > 0)[0]\n\n    # compute AUC\n    ## check\
         \ if multi-class\n    num_classes = np.max([len(np.unique(y_pred)), len(np.unique(y_test))])\n\
         \n    if num_classes > 2: # one-hot encode      \n        lb = LabelBinarizer()\n\
@@ -2959,10 +2961,10 @@ spec:
           json.JSONEncoder.default(self, obj)\n\n    # load features selected:\n    df_features_selected
           = pd.read_csv(file_path_features_selected)\n    # load trained model\n    trained_model
           = mlflow.sklearn.load_model(file_path_model)\n    # load test data\n    X_test
-          = pd.read_csv(file_path_x_test)\n    y_test = np.array(pd.read_csv(file_path_y_test))\n    ##
-          filter X_test to only include features selected for model\n    X_test =
-          X_test[list(df_features_selected[''feature_selected''])]\n\n    # Get predictions    \n    y_pred
-          = trained_model.predict(X_test)\n    #############################################################\n    #
+          = pd.read_csv(file_path_x_test)\n    y_test_raw = pd.read_csv(file_path_y_test)\n    y_test
+          = y_test_raw[y_test_raw.columns[0]]\n    ## filter X_test to only include
+          features selected for model\n    X_test = X_test[list(df_features_selected[''feature_selected''])]\n\n    #
+          Get predictions    \n    y_pred = trained_model.predict(X_test)\n    #############################################################\n    #
           Get accuracy\n    accuracy = accuracy_score(y_test, y_pred)\n    # Confusion
           matrix - use labels\n    cm = confusion_matrix(y_test, y_pred)\n    # AUC
           score\n    sum_y_test_axis_0 = np.sum(y_test, axis=0)\n    col_idx_y_test_nnz
