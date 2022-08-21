@@ -48,3 +48,8 @@ e.g.,
 3. Feature construction
 4. Feature selection
 5. Classification
+
+### Example:
+
+<img width="1285" alt="image" src="https://user-images.githubusercontent.com/66762689/185808936-97026029-d010-447f-9035-a019244fe06c.png">
+
