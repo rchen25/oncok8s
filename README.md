@@ -48,3 +48,14 @@ e.g.,
 3. Feature construction
 4. Feature selection
 5. Classification
+
+### Example:
+
+Graph representation of all components:
+
+<img width="1285" alt="image" src="https://user-images.githubusercontent.com/66762689/185808936-97026029-d010-447f-9035-a019244fe06c.png">
+
+Simplified Graph: 
+
+<img width="996" alt="image" src="https://user-images.githubusercontent.com/66762689/185808946-7b6177bb-497e-4015-ba38-eefc0072d8bd.png">
+
