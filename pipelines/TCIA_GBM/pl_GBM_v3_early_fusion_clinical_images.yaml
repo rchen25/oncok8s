@@ -2,7 +2,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
   generateName: pl-gbm-v3-early-fusion-clinical-images-
-  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.13, pipelines.kubeflow.org/pipeline_compilation_time: '2022-08-20T18:23:07.120181',
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.13, pipelines.kubeflow.org/pipeline_compilation_time: '2022-08-22T23:45:20.511051',
     pipelines.kubeflow.org/pipeline_spec: '{"description": "Pipeline: Download data,
       data processing", "inputs": [{"description": "name of column to use as class
       label (i.e., vital_status)", "name": "user_input_class_label_column_name"},
@@ -119,8 +119,8 @@ spec:
       artifacts:
       - {name: get-dummies-for-features-output_csv_features, path: /tmp/inputs/file_path_clinical_fx/data}
       - {name: get-dummies-for-features-output_csv_patient_list_filtered, path: /tmp/inputs/file_path_clinical_patient_id/data}
-      - {name: construct-features-image-skimage-opencv-outfile_features_df, path: /tmp/inputs/file_path_image_fx/data}
-      - {name: construct-features-image-skimage-opencv-outfile_patient_id_list, path: /tmp/inputs/file_path_image_patient_id/data}
+      - {name: construct-features-images-histomicstk-outfile_features_df, path: /tmp/inputs/file_path_image_fx/data}
+      - {name: construct-features-images-histomicstk-outfile_patient_id_list, path: /tmp/inputs/file_path_image_patient_id/data}
     outputs:
       artifacts:
       - {name: combine-feature-domains-outfile_master_features_df, path: /tmp/outputs/outfile_master_features_df/data}
@@ -214,168 +214,6 @@ spec:
           "type": "CSV"}, {"name": "output_csv_master_feature_list", "type": "CSV"}]}',
         pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"param_random_seed":
           "{{inputs.parameters.param_random_seed}}", "param_test_set_size": "{{inputs.parameters.test_set_size}}"}'}
-  - name: construct-features-image-skimage-opencv
-    container:
-      args: [--file-path-images, /tmp/inputs/file_path_images/data, --file-path-full-patient-id-list,
-        /tmp/inputs/file_path_full_patient_id_list/data, --file-path-full-patient-class-labels,
-        /tmp/inputs/file_path_full_patient_class_labels/data, --outfile-features-df,
-        /tmp/outputs/outfile_features_df/data, --outfile-patient-id-list, /tmp/outputs/outfile_patient_id_list/data,
-        --outfile-class-labels-pts-with-images, /tmp/outputs/outfile_class_labels_pts_with_images/data]
-      command:
-      - sh
-      - -c
-      - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-        'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
-        'pandas==1.1.4' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install
-        --quiet --no-warn-script-location 'scikit-image==0.19.1' 'numpy==1.21.2' 'opencv-python-headless==4.5.5.62'
-        'pandas==1.1.4' --user) && "$0" "$@"
-      - sh
-      - -ec
-      - |
-        program_path=$(mktemp)
-        printf "%s" "$0" > "$program_path"
-        python3 -u "$program_path" "$@"
-      - "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n \
-        \   os.makedirs(os.path.dirname(file_path), exist_ok=True)\n    return file_path\n\
-        \ndef construct_features_image_skimage_opencv(file_path_images,\n        \
-        \                        file_path_full_patient_id_list,\n               \
-        \                 file_path_full_patient_class_labels,\n                 \
-        \               outfile_features_df,\n                                outfile_patient_id_list,\n\
-        \                                outfile_class_labels_pts_with_images):\n\
-        \    \"\"\"Feature construction from images. \n\n    Args:\n        file_path:\
-        \ A string containing path to images (3-channel) in JSON obj.\n    \"\"\"\n\
-        \n    import json\n    from collections import OrderedDict\n    import numpy\
-        \ as np\n    import pandas as pd\n    from skimage.filters import prewitt_h,prewitt_v\n\
-        \n    # openCV features\n    input_filestream_json = \"./output/json_10_images.json\"\
-        \n\n    with open(file_path_images, \"r\") as read_file:\n        d_images_from_pl\
-        \ = json.load(read_file)\n\n    d_features = OrderedDict()\n    d_features[\"\
-        mean_weight_raw_img\"] = []\n    d_features[\"mean_edge_weight_horizontal\"\
-        ] = []\n    d_features[\"mean_edge_weight_vertical\"] = []\n\n    l_ptID =\
-        \ np.sort(list(d_images_from_pl.keys()))\n    for ptID in l_ptID:\n      \
-        \  img = np.array(\n                d_images_from_pl[\n                  \
-        \  ptID]\n                        [0] # use the first image for the pt\n \
-        \               )\n        # feature extraction\n\n        ## calculating\
-        \ horizontal edges using prewitt kernel\n        edges_prewitt_horizontal\
-        \ = prewitt_h(img[:,:,0])\n        ## calculating vertical edges using prewitt\
-        \ kernel\n        edges_prewitt_vertical = prewitt_v(img[:,:,0])\n\n     \
-        \   ## Feature: mean values \n        mean_weight_raw_img = np.mean(img)\n\
-        \        d_features[\"mean_weight_raw_img\"].append(mean_weight_raw_img)\n\
-        \n        ## Feature: mean values \n        mean_edge_weight_horizontal =\
-        \ np.mean(edges_prewitt_horizontal)\n        d_features[\"mean_edge_weight_horizontal\"\
-        ].append(mean_edge_weight_horizontal)\n\n        ## Feature: mean values \n\
-        \        mean_edge_weight_vertical = np.mean(edges_prewitt_vertical)\n   \
-        \     d_features[\"mean_edge_weight_vertical\"].append(mean_edge_weight_vertical)\n\
-        \n    df_features_combined = pd.DataFrame([])\n    df_features_combined['bcr_patient_barcode']\
-        \ = l_ptID\n    for feature_name in d_features.keys():\n        df_features_combined[feature_name]\
-        \ = d_features[feature_name]\n\n    # output patient ID list\n    df_patient_id_list\
-        \ = df_features_combined[['bcr_patient_barcode']]\n    df_patient_id_list.to_csv(outfile_patient_id_list,\
-        \ header = True, index = False)\n\n    # output features\n    del df_features_combined['bcr_patient_barcode']\n\
-        \    df_features_combined.to_csv(outfile_features_df, header = True, index\
-        \ = False)\n\n    # output target class labels for this cohort of patients\
-        \ (not all patients in full\n    #  cohort will have images)\n    df_full_patient_id_list\
-        \ = pd.read_csv(file_path_full_patient_id_list)\n    df_full_patient_class_labels\
-        \ = pd.read_csv(file_path_full_patient_class_labels)\n    ## isolate patients\
-        \ that have images\n    df_slice_full_patient_id_list_have_images = df_full_patient_id_list[df_full_patient_id_list['bcr_patient_barcode'].isin(df_patient_id_list['bcr_patient_barcode'])]\n\
-        \    idx_in_full_patient_id_list_have_images = df_slice_full_patient_id_list_have_images.index\n\
-        \    df_class_labels_pts_with_images = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n\
-        \n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,\
-        \ header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,\
-        \ header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
-        \ features image skimage opencv', description='Feature construction from images.')\n\
-        _parser.add_argument(\"--file-path-images\", dest=\"file_path_images\", type=str,\
-        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\"\
-        , dest=\"file_path_full_patient_id_list\", type=str, required=True, default=argparse.SUPPRESS)\n\
-        _parser.add_argument(\"--file-path-full-patient-class-labels\", dest=\"file_path_full_patient_class_labels\"\
-        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
-        --outfile-features-df\", dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\"\
-        , dest=\"outfile_patient_id_list\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\"\
-        , dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,\
-        \ required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\
-        \n_outputs = construct_features_image_skimage_opencv(**_parsed_args)\n"
-      image: python:3.7
-    inputs:
-      artifacts:
-      - {name: get-dummies-for-features-output_csv_target, path: /tmp/inputs/file_path_full_patient_class_labels/data}
-      - {name: get-dummies-for-features-output_csv_patient_list_filtered, path: /tmp/inputs/file_path_full_patient_id_list/data}
-      - {name: download-images-outfile_images_json, path: /tmp/inputs/file_path_images/data}
-    outputs:
-      artifacts:
-      - {name: construct-features-image-skimage-opencv-outfile_class_labels_pts_with_images,
-        path: /tmp/outputs/outfile_class_labels_pts_with_images/data}
-      - {name: construct-features-image-skimage-opencv-outfile_features_df, path: /tmp/outputs/outfile_features_df/data}
-      - {name: construct-features-image-skimage-opencv-outfile_patient_id_list, path: /tmp/outputs/outfile_patient_id_list/data}
-    metadata:
-      labels:
-        pipelines.kubeflow.org/kfp_sdk_version: 1.8.13
-        pipelines.kubeflow.org/pipeline-sdk-type: kfp
-        pipelines.kubeflow.org/enable_caching: "true"
-      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Feature
-          construction from images.", "implementation": {"container": {"args": ["--file-path-images",
-          {"inputPath": "file_path_images"}, "--file-path-full-patient-id-list", {"inputPath":
-          "file_path_full_patient_id_list"}, "--file-path-full-patient-class-labels",
-          {"inputPath": "file_path_full_patient_class_labels"}, "--outfile-features-df",
-          {"outputPath": "outfile_features_df"}, "--outfile-patient-id-list", {"outputPath":
-          "outfile_patient_id_list"}, "--outfile-class-labels-pts-with-images", {"outputPath":
-          "outfile_class_labels_pts_with_images"}], "command": ["sh", "-c", "(PIP_DISABLE_PIP_VERSION_CHECK=1
-          python3 -m pip install --quiet --no-warn-script-location ''scikit-image==0.19.1''
-          ''numpy==1.21.2'' ''opencv-python-headless==4.5.5.62'' ''pandas==1.1.4''
-          || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
-          ''scikit-image==0.19.1'' ''numpy==1.21.2'' ''opencv-python-headless==4.5.5.62''
-          ''pandas==1.1.4'' --user) && \"$0\" \"$@\"", "sh", "-ec", "program_path=$(mktemp)\nprintf
-          \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-          "def _make_parent_dirs_and_return_path(file_path: str):\n    import os\n    os.makedirs(os.path.dirname(file_path),
-          exist_ok=True)\n    return file_path\n\ndef construct_features_image_skimage_opencv(file_path_images,\n                                file_path_full_patient_id_list,\n                                file_path_full_patient_class_labels,\n                                outfile_features_df,\n                                outfile_patient_id_list,\n                                outfile_class_labels_pts_with_images):\n    \"\"\"Feature
-          construction from images. \n\n    Args:\n        file_path: A string containing
-          path to images (3-channel) in JSON obj.\n    \"\"\"\n\n    import json\n    from
-          collections import OrderedDict\n    import numpy as np\n    import pandas
-          as pd\n    from skimage.filters import prewitt_h,prewitt_v\n\n    # openCV
-          features\n    input_filestream_json = \"./output/json_10_images.json\"\n\n    with
-          open(file_path_images, \"r\") as read_file:\n        d_images_from_pl =
-          json.load(read_file)\n\n    d_features = OrderedDict()\n    d_features[\"mean_weight_raw_img\"]
-          = []\n    d_features[\"mean_edge_weight_horizontal\"] = []\n    d_features[\"mean_edge_weight_vertical\"]
-          = []\n\n    l_ptID = np.sort(list(d_images_from_pl.keys()))\n    for ptID
-          in l_ptID:\n        img = np.array(\n                d_images_from_pl[\n                    ptID]\n                        [0]
-          # use the first image for the pt\n                )\n        # feature extraction\n\n        ##
-          calculating horizontal edges using prewitt kernel\n        edges_prewitt_horizontal
-          = prewitt_h(img[:,:,0])\n        ## calculating vertical edges using prewitt
-          kernel\n        edges_prewitt_vertical = prewitt_v(img[:,:,0])\n\n        ##
-          Feature: mean values \n        mean_weight_raw_img = np.mean(img)\n        d_features[\"mean_weight_raw_img\"].append(mean_weight_raw_img)\n\n        ##
-          Feature: mean values \n        mean_edge_weight_horizontal = np.mean(edges_prewitt_horizontal)\n        d_features[\"mean_edge_weight_horizontal\"].append(mean_edge_weight_horizontal)\n\n        ##
-          Feature: mean values \n        mean_edge_weight_vertical = np.mean(edges_prewitt_vertical)\n        d_features[\"mean_edge_weight_vertical\"].append(mean_edge_weight_vertical)\n\n    df_features_combined
-          = pd.DataFrame([])\n    df_features_combined[''bcr_patient_barcode''] =
-          l_ptID\n    for feature_name in d_features.keys():\n        df_features_combined[feature_name]
-          = d_features[feature_name]\n\n    # output patient ID list\n    df_patient_id_list
-          = df_features_combined[[''bcr_patient_barcode'']]\n    df_patient_id_list.to_csv(outfile_patient_id_list,
-          header = True, index = False)\n\n    # output features\n    del df_features_combined[''bcr_patient_barcode'']\n    df_features_combined.to_csv(outfile_features_df,
-          header = True, index = False)\n\n    # output target class labels for this
-          cohort of patients (not all patients in full\n    #  cohort will have images)\n    df_full_patient_id_list
-          = pd.read_csv(file_path_full_patient_id_list)\n    df_full_patient_class_labels
-          = pd.read_csv(file_path_full_patient_class_labels)\n    ## isolate patients
-          that have images\n    df_slice_full_patient_id_list_have_images = df_full_patient_id_list[df_full_patient_id_list[''bcr_patient_barcode''].isin(df_patient_id_list[''bcr_patient_barcode''])]\n    idx_in_full_patient_id_list_have_images
-          = df_slice_full_patient_id_list_have_images.index\n    df_class_labels_pts_with_images
-          = df_full_patient_class_labels.loc[idx_in_full_patient_id_list_have_images]\n\n    df_class_labels_pts_with_images.to_csv(outfile_class_labels_pts_with_images,
-          header=True, index=False)\n    df_slice_full_patient_id_list_have_images.to_csv(outfile_patient_id_list,
-          header=True, index=False)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''Construct
-          features image skimage opencv'', description=''Feature construction from
-          images.'')\n_parser.add_argument(\"--file-path-images\", dest=\"file_path_images\",
-          type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-id-list\",
-          dest=\"file_path_full_patient_id_list\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--file-path-full-patient-class-labels\",
-          dest=\"file_path_full_patient_class_labels\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-features-df\",
-          dest=\"outfile_features_df\", type=_make_parent_dirs_and_return_path, required=True,
-          default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-patient-id-list\",
-          dest=\"outfile_patient_id_list\", type=_make_parent_dirs_and_return_path,
-          required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--outfile-class-labels-pts-with-images\",
-          dest=\"outfile_class_labels_pts_with_images\", type=_make_parent_dirs_and_return_path,
-          required=True, default=argparse.SUPPRESS)\n_parsed_args = vars(_parser.parse_args())\n\n_outputs
-          = construct_features_image_skimage_opencv(**_parsed_args)\n"], "image":
-          "python:3.7"}}, "inputs": [{"name": "file_path_images", "type": "JSON"},
-          {"name": "file_path_full_patient_id_list", "type": "CSV"}, {"name": "file_path_full_patient_class_labels",
-          "type": "CSV"}], "name": "Construct features image skimage opencv", "outputs":
-          [{"name": "outfile_features_df", "type": "CSV"}, {"name": "outfile_patient_id_list",
-          "type": "CSV"}, {"name": "outfile_class_labels_pts_with_images", "type":
-          "CSV"}]}', pipelines.kubeflow.org/component_ref: '{}'}
   - name: construct-features-images-histomicstk
     container:
       args: [--file-path-images, /tmp/inputs/file_path_images/data, --file-path-full-patient-id-list,
@@ -520,15 +358,18 @@ spec:
         \ <= 0 or param_test_set_size_float >= 1:        \n        param_test_set_size_float\
         \ = 0.25\n\n    # set random seed = passed down parameter\n    param_random_seed_int\
         \ = int(np.float64(param_random_seed))\n\n    X_train, X_test, y_train, y_test\
-        \ = train_test_split(df_features_combined, df_class_labels_pts_with_images,\
+        \ = train_test_split(df_features_combined.reset_index(drop=True), df_class_labels_pts_with_images,\
         \ \n                                                        test_size=param_test_set_size_float,\n\
         \                                                        random_state=param_random_seed_int)\
-        \ # IMPT: set random seed\\\\n \n\n#    df_idx_train = pd.DataFrame([])\n\
-        \    df_idx_train = X_train.index.to_frame().rename(columns={0: \"index\"\
-        })\n    df_idx_train['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_train.index]\
-        \  \n    df_idx_test = X_test.index.to_frame().rename(columns={0: \"index\"\
-        })\n    df_idx_test['bcr_patient_barcode'] = df_slice_full_patient_id_list_have_images.iloc[X_test.index]\
-        \   \n    ## save training and testing splits - to be used for instances where\
+        \ # IMPT: set random seed\\\\n \n\n    ## compute indexes (from set of image\
+        \ features) and associated patient ID's of train/test sets\n    df_idx_train\
+        \ = X_train.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test\
+        \ = X_test.index.to_frame().rename(columns={0: \"index\"})\n\n    indexes_from_full_pt_list_in_train\
+        \ = df_full_patient_id_list.iloc[df_idx_train.index].index\n    indexes_from_full_pt_list_in_test\
+        \ = df_full_patient_id_list.iloc[df_idx_test.index].index\n\n    df_idx_train['bcr_patient_barcode']\
+        \ = df_full_patient_id_list.iloc[indexes_from_full_pt_list_in_train]['bcr_patient_barcode']\n\
+        \    df_idx_test['bcr_patient_barcode'] = df_full_patient_id_list.iloc[indexes_from_full_pt_list_in_test]['bcr_patient_barcode']\n\
+        \n    ## save training and testing splits - to be used for instances where\
         \ just these image data are used in expt\\\\n    \n    df_idx_train.to_csv(output_csv_train_indexes,\
         \ index = False, header = True) \n    df_idx_test.to_csv(output_csv_test_indexes,\
         \ index = False, header = True)\n\nimport argparse\n_parser = argparse.ArgumentParser(prog='Construct\
@@ -680,13 +521,16 @@ spec:
           <= 0 or param_test_set_size_float >= 1:        \n        param_test_set_size_float
           = 0.25\n\n    # set random seed = passed down parameter\n    param_random_seed_int
           = int(np.float64(param_random_seed))\n\n    X_train, X_test, y_train, y_test
-          = train_test_split(df_features_combined, df_class_labels_pts_with_images,
+          = train_test_split(df_features_combined.reset_index(drop=True), df_class_labels_pts_with_images,
           \n                                                        test_size=param_test_set_size_float,\n                                                        random_state=param_random_seed_int)
-          # IMPT: set random seed\\\\n \n\n#    df_idx_train = pd.DataFrame([])\n    df_idx_train
-          = X_train.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_train[''bcr_patient_barcode'']
-          = df_slice_full_patient_id_list_have_images.iloc[X_train.index]  \n    df_idx_test
-          = X_test.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test[''bcr_patient_barcode'']
-          = df_slice_full_patient_id_list_have_images.iloc[X_test.index]   \n    ##
+          # IMPT: set random seed\\\\n \n\n    ## compute indexes (from set of image
+          features) and associated patient ID''s of train/test sets\n    df_idx_train
+          = X_train.index.to_frame().rename(columns={0: \"index\"})\n    df_idx_test
+          = X_test.index.to_frame().rename(columns={0: \"index\"})\n\n    indexes_from_full_pt_list_in_train
+          = df_full_patient_id_list.iloc[df_idx_train.index].index\n    indexes_from_full_pt_list_in_test
+          = df_full_patient_id_list.iloc[df_idx_test.index].index\n\n    df_idx_train[''bcr_patient_barcode'']
+          = df_full_patient_id_list.iloc[indexes_from_full_pt_list_in_train][''bcr_patient_barcode'']\n    df_idx_test[''bcr_patient_barcode'']
+          = df_full_patient_id_list.iloc[indexes_from_full_pt_list_in_test][''bcr_patient_barcode'']\n\n    ##
           save training and testing splits - to be used for instances where just these
           image data are used in expt\\\\n    \n    df_idx_train.to_csv(output_csv_train_indexes,
           index = False, header = True) \n    df_idx_test.to_csv(output_csv_test_indexes,
@@ -933,7 +777,7 @@ spec:
       - {name: param_random_seed}
       - {name: test_set_size}
       artifacts:
-      - {name: construct-features-image-skimage-opencv-outfile_class_labels_pts_with_images,
+      - {name: construct-features-images-histomicstk-outfile_class_labels_pts_with_images,
         path: /tmp/inputs/file_path_class_labels/data}
       - {name: scale-df-2-output_csv, path: /tmp/inputs/file_path_features/data}
       - {name: construct-features-images-histomicstk-output_csv_test_indexes, path: /tmp/inputs/file_path_test_indexes/data}
@@ -1718,7 +1562,7 @@ spec:
       image: python:3.7
     inputs:
       artifacts:
-      - {name: construct-features-image-skimage-opencv-outfile_features_df, path: /tmp/inputs/file/data}
+      - {name: construct-features-images-histomicstk-outfile_features_df, path: /tmp/inputs/file/data}
     outputs:
       artifacts:
       - {name: impute-unknown-2-output_csv, path: /tmp/outputs/output_csv/data}
@@ -1865,25 +1709,17 @@ spec:
       tasks:
       - name: combine-feature-domains
         template: combine-feature-domains
-        dependencies: [construct-features-image-skimage-opencv, get-dummies-for-features]
+        dependencies: [construct-features-images-histomicstk, get-dummies-for-features]
         arguments:
           parameters:
           - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
-          - {name: construct-features-image-skimage-opencv-outfile_features_df, from: '{{tasks.construct-features-image-skimage-opencv.outputs.artifacts.construct-features-image-skimage-opencv-outfile_features_df}}'}
-          - {name: construct-features-image-skimage-opencv-outfile_patient_id_list,
-            from: '{{tasks.construct-features-image-skimage-opencv.outputs.artifacts.construct-features-image-skimage-opencv-outfile_patient_id_list}}'}
+          - {name: construct-features-images-histomicstk-outfile_features_df, from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_features_df}}'}
+          - {name: construct-features-images-histomicstk-outfile_patient_id_list,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_patient_id_list}}'}
           - {name: get-dummies-for-features-output_csv_features, from: '{{tasks.get-dummies-for-features.outputs.artifacts.get-dummies-for-features-output_csv_features}}'}
           - {name: get-dummies-for-features-output_csv_patient_list_filtered, from: '{{tasks.get-dummies-for-features.outputs.artifacts.get-dummies-for-features-output_csv_patient_list_filtered}}'}
-      - name: construct-features-image-skimage-opencv
-        template: construct-features-image-skimage-opencv
-        dependencies: [download-images, get-dummies-for-features]
-        arguments:
-          artifacts:
-          - {name: download-images-outfile_images_json, from: '{{tasks.download-images.outputs.artifacts.download-images-outfile_images_json}}'}
-          - {name: get-dummies-for-features-output_csv_patient_list_filtered, from: '{{tasks.get-dummies-for-features.outputs.artifacts.get-dummies-for-features-output_csv_patient_list_filtered}}'}
-          - {name: get-dummies-for-features-output_csv_target, from: '{{tasks.get-dummies-for-features.outputs.artifacts.get-dummies-for-features-output_csv_target}}'}
       - name: construct-features-images-histomicstk
         template: construct-features-images-histomicstk
         dependencies: [download-images, get-dummies-for-features]
@@ -1910,15 +1746,14 @@ spec:
           - {name: scale-df-output_csv, from: '{{tasks.scale-df.outputs.artifacts.scale-df-output_csv}}'}
       - name: create-model-inputs-2
         template: create-model-inputs-2
-        dependencies: [construct-features-image-skimage-opencv, construct-features-images-histomicstk,
-          scale-df-2]
+        dependencies: [construct-features-images-histomicstk, scale-df-2]
         arguments:
           parameters:
           - {name: param_random_seed, value: '{{inputs.parameters.param_random_seed}}'}
           - {name: test_set_size, value: '{{inputs.parameters.test_set_size}}'}
           artifacts:
-          - {name: construct-features-image-skimage-opencv-outfile_class_labels_pts_with_images,
-            from: '{{tasks.construct-features-image-skimage-opencv.outputs.artifacts.construct-features-image-skimage-opencv-outfile_class_labels_pts_with_images}}'}
+          - {name: construct-features-images-histomicstk-outfile_class_labels_pts_with_images,
+            from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_class_labels_pts_with_images}}'}
           - {name: construct-features-images-histomicstk-output_csv_test_indexes,
             from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-output_csv_test_indexes}}'}
           - {name: construct-features-images-histomicstk-output_csv_train_indexes,
@@ -1963,10 +1798,10 @@ spec:
           - {name: get-dummies-for-features-output_csv_features, from: '{{tasks.get-dummies-for-features.outputs.artifacts.get-dummies-for-features-output_csv_features}}'}
       - name: impute-unknown-2
         template: impute-unknown-2
-        dependencies: [construct-features-image-skimage-opencv]
+        dependencies: [construct-features-images-histomicstk]
         arguments:
           artifacts:
-          - {name: construct-features-image-skimage-opencv-outfile_features_df, from: '{{tasks.construct-features-image-skimage-opencv.outputs.artifacts.construct-features-image-skimage-opencv-outfile_features_df}}'}
+          - {name: construct-features-images-histomicstk-outfile_features_df, from: '{{tasks.construct-features-images-histomicstk.outputs.artifacts.construct-features-images-histomicstk-outfile_features_df}}'}
       - name: impute-unknown-3
         template: impute-unknown-3
         dependencies: [combine-feature-domains]
